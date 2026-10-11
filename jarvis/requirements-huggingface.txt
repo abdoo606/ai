@@ -1,0 +1,6 @@
+# Install after the base requirements to enable JARVIS_BACKEND=huggingface.
+-r requirements.txt
+transformers>=4.46,<6
+safetensors>=0.4
+# Choose the PyTorch build appropriate for your CPU/GPU if pip's default is unsuitable.
+torch>=2.2

@@ -12,6 +12,10 @@ __pycache__/
 /Connectivity_783.parquet
 /.*.part
 
+# Jarvis runtime state and locally downloaded model weights.
+/jarvis/data/
+/jarvis/models/
+
 # A simulation may produce gigabytes of results. Keep the upstream example output.
 /results/*
 !/results/example/
