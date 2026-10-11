@@ -330,4 +330,7 @@ def test_end_to_end_offline_learn_then_recall(settings, fake_web):
 def test_settings_default_to_offline_mode(tmp_path):
     s = load_settings({"JARVIS_HOME": str(tmp_path)})
     assert s.llm_mode == "offline-rules" and s.allow_shell is False
-    assert load_settings({"JARVIS_LLM_API_KEY": "k"}).llm_mode == "openai-compatible"
+    # A key alone does not switch backends: the network model needs an explicit opt-in.
+    assert load_settings({"JARVIS_LLM_API_KEY": "k"}).llm_mode == "offline-rules"
+    on = load_settings({"JARVIS_BACKEND": "openai", "JARVIS_LLM_API_KEY": "k"})
+    assert on.llm_mode == "openai-compatible"

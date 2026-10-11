@@ -2,7 +2,7 @@
 
 A personal assistant with tools, memory and web learning. It runs in a browser (with voice input and spoken replies) or in a terminal.
 
-It works offline in a basic command mode. For full conversation, set an OpenAI-compatible API key.
+It is standalone: it needs no API key and no external model. Everything runs locally, except web search and page reads, which need internet access. An optional OpenAI-compatible backend exists for later.
 
 ## Features
 
@@ -25,7 +25,8 @@ Python 3.10 or newer. SQLite with FTS5 is included in standard Python builds.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `JARVIS_LLM_API_KEY` | (empty) | Enables the language model. Set it in your environment, never in the code. |
+| `JARVIS_BACKEND` | `offline` | `offline` needs nothing. `openai` enables an OpenAI-compatible model (optional). |
+| `JARVIS_LLM_API_KEY` | (empty) | Used only with `JARVIS_BACKEND=openai`. Set it in your environment, never in the code. |
 | `JARVIS_LLM_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible endpoint (OpenRouter, a local server, ...). |
 | `JARVIS_LLM_MODEL` | `gpt-4o-mini` | Model name. |
 | `JARVIS_HOME` | `jarvis/data` | Where the knowledge base is stored. Git-ignored. |
@@ -89,3 +90,5 @@ The tests use fixtures for web pages and scripted models. They need no network a
 - The web search depends on DuckDuckGo's HTML endpoint. It can change or rate-limit.
 - Learned text is stored as-is. Check important answers against the cited sources.
 - Not yet built: a desktop GUI, device and smart-home control, and live voice in the terminal.
+
+See `README_AI.md` for the developer handoff (state, decisions, next steps).

@@ -1,6 +1,6 @@
 """Jarvis: a personal assistant with tools, memory and web learning.
 
-Works offline in a basic mode. Set JARVIS_LLM_API_KEY for a full language model.
+Standalone by default: no API key, no network model. An OpenAI-compatible backend is optional (JARVIS_BACKEND=openai).
 """
 
 from .agent import Assistant

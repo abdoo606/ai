@@ -36,7 +36,7 @@ def create_app(assistant: Assistant | None = None) -> FastAPI:
 
     @app.get("/api/status")
     def status():
-        return {"llm": settings.llm_mode, "model": settings.llm_model if settings.llm_api_key else None,
+        return {"llm": settings.llm_mode, "model": settings.llm_model if settings.llm_mode == "openai-compatible" else None,
                 "topics": bot.tools.call("list_topics", {}),
                 "shell_enabled": settings.allow_shell}
 

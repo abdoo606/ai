@@ -123,11 +123,11 @@ class RuleBasedLLM:
             "- search <query>  /  ابحث عن <شي>: web search\n"
             "- topics  /  المواضيع: what I have learned\n"
             "- time  /  الوقت\n"
-            "Set JARVIS_LLM_API_KEY to enable a full language model."
+            "Running fully offline. No API key or network model is needed."
         )
 
 
 def make_llm(settings: Settings) -> LLM:
-    if settings.llm_api_key:
+    if settings.llm_mode == "openai-compatible":
         return OpenAICompatibleLLM(settings.llm_api_key, settings.llm_base_url, settings.llm_model)
     return RuleBasedLLM()

@@ -157,7 +157,7 @@ speakBtn.onclick = () => { speakReplies = !speakReplies; speakBtn.classList.togg
 (async () => {
   try {
     const s = await api('/api/status');
-    statusEl.textContent = (s.llm === 'openai-compatible' ? 'model: ' + s.model : 'offline mode (no API key)');
+    statusEl.textContent = (s.llm === 'openai-compatible' ? 'model: ' + s.model : 'offline mode (standalone)');
     add('bot', 'Good day. How can I help? Try "learn quantum computing", then "recall how qubits work".');
   } catch (e) {
     statusEl.textContent = 'server not reachable';
