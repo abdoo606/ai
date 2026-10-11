@@ -76,7 +76,10 @@ class HuggingFaceTransformersLLM:
     def _system_prompt(tools: Optional[List[dict]]) -> str:
         schemas = json.dumps(tools or [], ensure_ascii=False, separators=(",", ":"))
         return (
-            "You are Jarvis, a concise personal assistant. Reply in the user's language. "
+            "You are Jarvis, a concise local personal assistant. Reply in the user's language. "
+            "For complex questions, reason internally in steps: retrieve evidence, inspect concept links, "
+            "compare sources and contradictions, then provide only the conclusion and supporting evidence. "
+            "Never expose private chain-of-thought or mistake co-occurrence for causation. "
             "You may call one or more tools. Return exactly one JSON object and no markdown: "
             '{"content":"answer or null","tool_calls":['
             '{"id":"call-1","name":"tool_name","arguments":{"arg":"value"}}]}. '
@@ -177,6 +180,7 @@ class RuleBasedLLM:
             (r"^(what do you know about|ماذا تعرف عن|ماذا تعرف)\s+(.+)$", "recall", "query"),
             (r"^(summarize|summary of|لخص|ملخص)\s+(.+)$", "summarize_topic", "topic"),
             (r"^(sources for|list sources|مصادر|المصادر)\s+(.+)$", "list_sources", "topic"),
+            (r"^(connect|link|اربط|شو العلاقه بين|ما العلاقه بين)\s+(.+)$", "connect_ideas", "query"),
             (r"^(search|google|ابحث عن|ابحث)\s+(.+)$", "web_search", "query"),
             (r"^(forget|انسي|انس)\s+(.+)$", "forget_topic", "topic"),
         ]
@@ -186,6 +190,8 @@ class RuleBasedLLM:
                 return tool, {argument: match.group(2).strip()}
         if low in {"topics", "list topics", "المواضيع", "المواضيع اللي تعرفها"}:
             return "list_topics", {}
+        if low in {"rebuild connections", "rebuild graph", "اعد بناء الروابط", "حدث الروابط"}:
+            return "rebuild_connections", {}
         if re.search(r"\b(time|date)\b", low) or any(word in low for word in ("الوقت", "الساعة", "الساعه", "التاريخ")):
             return "get_time", {}
         # A direct question is treated as a memory question, making offline mode

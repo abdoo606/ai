@@ -202,6 +202,29 @@ def build_registry(kb: KnowledgeBase, settings: Settings) -> ToolRegistry:
         summarize_topic,
     ))
 
+    def connect_ideas(query: str, topic: Optional[str] = None, limit: int = 10) -> str:
+        links = kb.connections(query, topic=topic, limit=int(limit))
+        if not links:
+            return "no evidence-backed connections found"
+        return "\n".join(
+            f"- [{link.topic}] {link.source} ↔ {link.target} (weight {link.weight})"
+            for link in links
+        )
+
+    reg.register(Tool(
+        "connect_ideas", "Find evidence-backed concept links related to a question. "
+        "Links mean co-occurrence, not automatic causation.",
+        _obj({"query": {"type": "string"}, "topic": {"type": "string"},
+              "limit": {"type": "integer", "default": 10}}, ["query"]),
+        connect_ideas,
+    ))
+
+    reg.register(Tool(
+        "rebuild_connections", "Rebuild the local concept graph after upgrading an old knowledge database.",
+        _obj({"topic": {"type": "string"}}, []),
+        lambda topic=None: f"indexed {kb.rebuild_connections(topic)} chunk(s) into the concept graph",
+    ))
+
     reg.register(Tool(
         "list_topics", "List the topics stored in memory.", _obj({}, []),
         lambda: ", ".join(kb.topics()) or "no topics yet",

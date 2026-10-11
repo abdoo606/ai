@@ -129,6 +129,34 @@ def test_recall_builds_concise_answer_with_citations(kb):
     assert "https://p.example" in answer
 
 
+def test_concept_graph_links_points_and_expands_retrieval(kb):
+    kb.add_source("physics", "https://p.example/mechanics", "Mechanics", (
+        "Force changes motion and acceleration. Energy describes the ability to do work. "
+        "Force, motion, energy, and acceleration are central mechanics concepts."
+    ))
+    kb.add_source("physics", "https://p.example/relativity", "Relativity", (
+        "Energy and mass are related in relativity. Spacetime geometry describes gravity."
+    ))
+    related = kb.related_terms("force", topic="physics")
+    assert "motion" in related or "acceleration" in related
+    links = kb.connections("energy", topic="physics", limit=30)
+    assert links and any("mass" in (link.source, link.target) for link in links)
+    answer = kb.answer("How is force connected to motion?", topic="physics")
+    assert "Connections / الروابط" in answer
+    assert "https://p.example/mechanics" in answer
+
+
+def test_rebuild_connections_indexes_legacy_chunks(kb):
+    kb.add_source("biology", "https://b.example", "Cells", "Cells contain DNA and proteins. " * 8)
+    kb.db.execute("DELETE FROM concepts")
+    kb.db.execute("DELETE FROM concept_relations")
+    kb.db.commit()
+    kb._related_cache.clear()
+    assert kb.connections("cells", topic="biology") == []
+    assert kb.rebuild_connections("biology") >= 1
+    assert kb.connections("cells", topic="biology")
+
+
 def test_duplicate_source_is_not_stored_twice(kb):
     assert kb.add_source("t", "https://d.example", "D", "content here") == 1
     assert kb.add_source("t", "https://d.example", "D", "content here") == 0
@@ -252,7 +280,8 @@ def test_deep_research_maps_queries_deduplicates_and_stores(kb):
 def test_registry_has_expected_tools(kb, settings):
     names = set(build_registry(kb, settings).tools)
     assert {"get_time", "web_search", "fetch_url", "learn_topic", "learn_deep", "recall",
-            "list_sources", "summarize_topic", "list_topics", "forget_topic",
+            "list_sources", "summarize_topic", "connect_ideas", "rebuild_connections",
+            "list_topics", "forget_topic",
             "read_file", "write_file", "list_files"} <= names
     assert "run_command" not in names  # shell is off by default
 
@@ -327,6 +356,7 @@ def test_learn_topic_skips_failing_pages(kb, settings, fake_web, monkeypatch):
     ("summarize quantum", ("summarize_topic", {"topic": "quantum"})),
     ("لخّص الحوسبة", ("summarize_topic", {"topic": "الحوسبة"})),
     ("مصادر quantum", ("list_sources", {"topic": "quantum"})),
+    ("اربط الطاقة والكتلة", ("connect_ideas", {"query": "الطاقة والكتلة"})),
     ("كيف تعمل الكيوبتات؟", ("recall", {"query": "كيف تعمل الكيوبتات"})),
     ("forget quantum", ("forget_topic", {"topic": "quantum"})),
 ])

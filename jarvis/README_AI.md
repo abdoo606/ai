@@ -25,29 +25,29 @@ Restored onto `arena/a202685b-ai` from the earlier Jarvis work and actively deve
 
 Working:
 - `config.py`: local-only settings (`JARVIS_BACKEND`, `JARVIS_HF_*`, `JARVIS_HOME`, `JARVIS_WORKSPACE`, `JARVIS_ALLOW_SHELL`). There are no API credentials or hosted-model settings.
-- `knowledge.py`: `KnowledgeBase` on SQLite with FTS5. It preserves original chunks but indexes normalized text, including Arabic diacritics/alef/ya variants. BM25 retrieval feeds a citation-preserving extractive answerer. The old FTS schema migrates automatically.
+- `knowledge.py`: hybrid local reasoning memory: normalized FTS5/BM25 plus weighted concept/co-occurrence tables. New chunks update the graph. Queries use graph expansion and reciprocal-rank fusion; answers use maximal marginal relevance and citations. Indexed graph lookups, WAL, a 32 MiB cache, and expansion caching keep it fast. Old FTS schema migrates automatically; old content can be graph-indexed with `rebuild_connections`.
 - `research.py`: `DeepResearcher` builds a broad bilingual curriculum, runs bounded multi-pass searches, reads and deduplicates pages, discovers subtopics, and archives them locally. `learn` / `اتعلم` routes here.
 - `web.py`: stdlib only. `html_to_text` (drops script, style, nav, footer, header, form), `fetch_text` (http/https only, 2 MB cap), `parse_search_results` (DuckDuckGo HTML), `search`.
-- `tools.py`: `ToolRegistry`. Tools: `get_time`, `web_search`, `fetch_url`, `learn_topic`, `learn_deep`, `recall`, `summarize_topic`, `list_sources`, `list_topics`, `forget_topic`, `read_file`, `write_file`, `list_files`, and `run_command` (only with shell enabled). File tools are confined to the workspace (`~/jarvis_workspace`). Results are capped at 4000 characters. Errors come back as text, never as exceptions.
+- `tools.py`: `ToolRegistry`. Tools: `get_time`, `web_search`, `fetch_url`, `learn_topic`, `learn_deep`, `recall`, `summarize_topic`, `connect_ideas`, `rebuild_connections`, `list_sources`, `list_topics`, `forget_topic`, `read_file`, `write_file`, `list_files`, and `run_command` (only with shell enabled). File tools are confined to the workspace (`~/jarvis_workspace`). Results are capped at 4000 characters. Errors come back as text, never as exceptions.
 - `llm.py`: `RuleBasedLLM` is the default offline router. `HuggingFaceTransformersLLM` is an opt-in, lazy-loaded local open-model backend with a constrained JSON tool protocol. Hosted-model clients were deleted.
 - `agent.py`: `Assistant.ask()`. Runs a bounded tool loop (`MAX_STEPS=6`), keeps the last 40 messages, and turns LLM errors into text.
 - `server.py`: FastAPI. Routes: `GET /`, `GET /api/status`, `POST /api/chat`, `POST /api/reset`, `POST /api/learn`, `GET /api/recall?q=`. Relative URLs in the UI. Run with `uvicorn jarvis.server:get_app --factory --host 0.0.0.0 --port 8000`.
 - `web/index.html`: chat, learn panel, recall panel, mic and speaker buttons.
 - `cli.py` and `__main__.py`: terminal REPL. Commands: `exit`, `reset`.
-- `tests/test_jarvis.py`: 51 offline tests (chunking, FTS, parsing, file confinement, tool errors, intents, agent loop, end-to-end learn then recall). Run with `pytest -q jarvis/tests`. They use fixtures and scripted models, with no network.
+- `tests/test_jarvis.py`: 54 offline tests (chunking, FTS, parsing, file confinement, tool errors, intents, agent loop, end-to-end learn then recall). Run with `pytest -q jarvis/tests`. They use fixtures and scripted models, with no network.
 
 Known gaps and bugs:
 - The default offline brain is not generative, but now answers direct questions extractively, summarizes learned topics, lists sources, and emits inline citations. The optional Hugging Face backend provides generative local reasoning.
 - The DuckDuckGo search was **never tested live** (the sandbox has no route to it). Parsing is tested only on a fixture. Expect breakage if the HTML changes.
 - `learn_deep` filters short pages and deduplicates URLs/exact content during each run, but does not yet read PDFs or detect semantic near-duplicates across separate runs.
-- Chunks are ranked by BM25 only. There are no embeddings.
+- Retrieval is hybrid BM25 + concept graph, not neural embeddings. The graph records co-occurrence, so it must never be presented as proof of causation.
 - No authentication on the web server. Bind to 0.0.0.0 only in trusted networks (the sandbox preview needs it).
 - Shell: `run_command` runs with `shell=True` in the workspace, with a timeout but no sandbox. Only enable it deliberately.
 - The desktop GUI, device and smart-home control, and live voice in the terminal are not built.
 
 ## 4. Where we are heading (priority order)
 
-1. **Continue improving autonomous deep learning and grounded offline answers.** Extractive answers, summaries, source listing, and Arabic normalization are implemented. Next add learning-by-date queries and better sentence reranking/deduplication.
+1. **Continue improving autonomous deep learning and grounded offline answers.** Graph expansion, reciprocal-rank fusion, MMR sentence selection, summaries, source listing, citations, and Arabic normalization are implemented. Next add contradiction detection and learning-by-date queries.
 2. **Verify live web search and learning** when network access allows it (DuckDuckGo HTML, then a fallback engine if it fails). Add a retry and a rate limit.
 3. **Desktop app**: a small native-feeling window (for example pywebview wrapping the existing FastAPI server, or a Tkinter shell), plus a global hotkey. Keep the same API. Do not duplicate logic.
 4. **Live voice on desktop**: Python speech input and output with packages from PyPI only (for example `SpeechRecognition` with an offline engine, `pyttsx3`). Check that the required model files are not downloaded from hosts outside the allowlist.
