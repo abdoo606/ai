@@ -10,10 +10,11 @@ the prior fictional-assistant name. It is pronounceable in English and Arabic
 
 ## Preliminary engineering search — 2026-10-11
 
-An exact-name GitHub repository search for `zehnora` returned zero repositories.
-This is useful collision screening only. It is **not** a trademark, company,
-domain, app-store, or common-law search, and it cannot establish that the name
-is free of third-party rights.
+Exact-name searches returned no GitHub repository named `zehnora` and no PyPI
+distribution named `zehnora` or `local-zehnora-assistant`. These checks were
+performed on 2026-10-11 and are useful collision screening only. They are **not**
+a trademark, company, domain, app-store, or common-law search, and cannot
+establish that the name is free of third-party rights.
 
 ## Required clearance before accepting payment
 
