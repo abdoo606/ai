@@ -1,4 +1,4 @@
-# Install after the base requirements to enable JARVIS_BACKEND=huggingface.
+# Install after the base requirements to enable ZEHNORA_BACKEND=huggingface.
 -r requirements.txt
 transformers>=4.51,<6
 huggingface-hub>=0.26,<2

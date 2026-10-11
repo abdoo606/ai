@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install a keyless local Jarvis model profile once.
+"""Install a keyless local Zehnora model profile once.
 
 One strong multilingual reasoning model is shared in memory by four logical
 roles (reasoner, critic, Arabic writer, English writer). A smaller independent
@@ -45,12 +45,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Install Jarvis's local intent and reasoning brains")
+    parser = argparse.ArgumentParser(description="Install Zehnora's local intent and reasoning brains")
     parser.add_argument("--profile", choices=PROFILES, default="powerful",
                         help="hardware/quality profile (default: powerful)")
     parser.add_argument("--only", choices=["all", "intent", "reasoning"], default="all")
     parser.add_argument("--directory", type=Path, default=ROOT / "models",
-                        help="model destination (default: jarvis/models)")
+                        help="model destination (default: zehnora/models)")
     parser.add_argument("--reasoning", help="override reasoning model repository ID")
     parser.add_argument("--intent", help="override intent model repository ID")
     parser.add_argument("--reasoning-revision", help="immutable commit SHA (resolved automatically if omitted)")
@@ -78,7 +78,7 @@ def main() -> int:
     try:
         from huggingface_hub import HfApi, snapshot_download
     except ImportError as error:
-        raise SystemExit("Install first: pip install -r jarvis/requirements-huggingface.txt") from error
+        raise SystemExit("Install first: pip install -r zehnora/requirements-huggingface.txt") from error
 
     api = HfApi()
     requested_revisions = {"intent": args.intent_revision, "reasoning": args.reasoning_revision}
@@ -110,7 +110,7 @@ def main() -> int:
         "english_writer": str(args.directory / "reasoning"),
     }
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
-    print("\nReady. Start strong mode with: JARVIS_BACKEND=powerful python -m jarvis")
+    print("\nReady. Start strong mode with: ZEHNORA_BACKEND=powerful python -m zehnora")
     return 0
 
 

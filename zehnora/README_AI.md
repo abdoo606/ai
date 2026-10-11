@@ -1,10 +1,10 @@
-# README_AI: handoff for agents working on Jarvis
+# README_AI: handoff for agents working on Zehnora
 
 Read this first. It tells you what this project is, what state it is in, what the user wants, and where to go next. Keep it up to date when you change the project.
 
 ## 1. What this is
 
-Jarvis is a personal assistant inspired by the JARVIS of Iron Man. It lives in `jarvis/` in the repo `abdoo606/ai` (branch `arena/a202685b-ai`). The repo is a fork of an original Drosophila whole-brain model. **Do not modify the Drosophila files at the repo root** (`model.py`, `utils.py`, `example.ipynb`, `figures.ipynb`, `results/`, `scripts/`, `Readme.md`, `environment*.yml`). All new work goes in its own directory.
+Zehnora (`ذهنورا`) is a private, API-free Arabic/English personal research assistant. It lives in `zehnora/` in the repo `abdoo606/ai` (branch `arena/a202685b-ai`). The working name replaced the earlier fictional-assistant brand to reduce obvious trademark risk; it still requires formal clearance before sale. The repo is a fork of an original Drosophila whole-brain model. **Do not modify the Drosophila files at the repo root** (`model.py`, `utils.py`, `example.ipynb`, `figures.ipynb`, `results/`, `scripts/`, `Readme.md`, `environment*.yml`). All new work goes in its own directory.
 
 Sibling project: `human_brain_agents/`, a spiking-network prototype of a human-like sensorimotor decision loop (auditory, visual, tactile stimuli to motor command, reaction times, noise robustness, reward learning). It is paused. Its code and tests are already committed (39 tests pass). Do not resume it unless the user asks.
 
@@ -12,36 +12,36 @@ Sibling project: `human_brain_agents/`, a spiking-network prototype of a human-l
 
 - The user writes Levantine Arabic. **Reply in Arabic, Levantine dialect**, matching their style. Code, comments and identifiers stay in English.
 - Python. Data and packages only from GitHub and PyPI (the sandbox allows only github.com, codeload, api.github.com, registry.npmjs.org, pypi.org, files.pythonhosted.org).
-- Jarvis must:
+- Zehnora must:
   1. Learn any domain the user asks for: search the web, read sources, understand them, archive them, and use them later. **Implemented as bounded deep-learning passes** (curriculum search, subtopic expansion, deduplication, local FTS memory, and source URLs).
-  2. Support a **web interface and a desktop** interface. Web is done. Desktop is only a terminal (`python -m jarvis`). A real desktop GUI is **not built**.
-  3. Support voice and command execution. Voice input and output are in the web page (Web Speech API, Chrome or Edge). Command execution exists but is **off by default** (`JARVIS_ALLOW_SHELL=1`).
+  2. Support a **web interface and a desktop** interface. Web is done. Desktop is only a terminal (`python -m zehnora`). A real desktop GUI is **not built**.
+  3. Support voice and command execution. Voice input and output are in the web page (Web Speech API, Chrome or Edge). Command execution exists but is **off by default** (`ZEHNORA_ALLOW_SHELL=1`).
   4. **Be standalone: no API key, no paid service.** The user said explicitly: "I don't want an API key; I want it standalone, like the brain project." Hosted model/API backends have now been removed completely. Only the built-in offline brain and an optional model running locally through Transformers are allowed. Never add or request API keys.
 - The user does not mind reusing or adapting code from other projects.
 
 ## 3. Current state (as of this handoff)
 
-Restored onto `arena/a202685b-ai` from the earlier Jarvis work and actively developed here. The default is standalone. The strongest optional mode is `JARVIS_BACKEND=powerful`: intent → senior reasoner/tool use → adversarial critic → Arabic/English revision. Logical roles share one strong physical model pipeline in memory. All load lazily and runtime downloads are disabled by default.
+Restored onto `arena/a202685b-ai` from the earlier Zehnora work and actively developed here. The default is standalone. The strongest optional mode is `ZEHNORA_BACKEND=powerful`: intent → senior reasoner/tool use → adversarial critic → Arabic/English revision. Logical roles share one strong physical model pipeline in memory. All load lazily and runtime downloads are disabled by default.
 
 Working:
-- `config.py`: local-only settings for intent, reasoner, critic, Arabic writer, and English writer paths plus 1–3 verification rounds. `powerful` activates deliberation; roles share `jarvis/models/reasoning` by default. There are no API credentials or hosted-model settings.
+- `config.py`: local-only settings for intent, reasoner, critic, Arabic writer, and English writer paths plus 1–3 verification rounds. `powerful` activates deliberation; roles share `zehnora/models/reasoning` by default. There are no API credentials or hosted-model settings.
 - `knowledge.py`: hybrid local reasoning memory: normalized FTS5/BM25 plus weighted concept/co-occurrence tables. New chunks update the graph. Queries use graph expansion and reciprocal-rank fusion; answers use maximal marginal relevance and citations. Indexed graph lookups, WAL, a 32 MiB cache, and expansion caching keep it fast. Old FTS schema migrates automatically; old content can be graph-indexed with `rebuild_connections`.
 - `research.py`: `DeepResearcher` builds a broad bilingual curriculum, runs bounded multi-pass searches, reads and deduplicates pages, discovers subtopics, and archives them locally. `learn` / `اتعلم` routes here.
 - `web.py`: stdlib only. `html_to_text` (drops script, style, nav, footer, header, form), `fetch_text` (http/https only, 2 MB cap), `parse_search_results` (DuckDuckGo HTML), `search`.
-- `tools.py`: `ToolRegistry`. Tools: `get_time`, `web_search`, `fetch_url`, `learn_topic`, `learn_deep`, `recall`, `summarize_topic`, `connect_ideas`, `rebuild_connections`, `list_sources`, `list_topics`, `forget_topic`, `read_file`, `write_file`, `list_files`, and `run_command` (only with shell enabled). File tools are confined to the workspace (`~/jarvis_workspace`). Results are capped at 4000 characters. Errors come back as text, never as exceptions.
+- `tools.py`: `ToolRegistry`. Tools: `get_time`, `web_search`, `fetch_url`, `learn_topic`, `learn_deep`, `recall`, `summarize_topic`, `connect_ideas`, `rebuild_connections`, `list_sources`, `list_topics`, `forget_topic`, `read_file`, `write_file`, `list_files`, and `run_command` (only with shell enabled). File tools are confined to the workspace (`~/zehnora_workspace`). Results are capped at 4000 characters. Errors come back as text, never as exceptions.
 - `llm.py`: fuzzy commands and language detection remain. `DeliberativeLocalLLM` uses intent, senior reasoner, adversarial critic, and final language writer passes. `HuggingFaceTransformersLLM` caches pipelines by model path/device so logical roles share weights rather than duplicating a 14B/32B model. Hosted-model clients do not exist.
 - `agent.py`: `Assistant.ask()`. Runs a bounded tool loop (`MAX_STEPS=6`), keeps the last 40 messages, and turns LLM errors into text.
-- `server.py`: hardened FastAPI boundary with optional constant-time bearer/header authentication, failed-auth throttling, per-client expensive-route rate limiting, bounded Pydantic inputs, health endpoint, no-store/security headers, and routes: `GET /`, `GET /api/status`, `POST /api/chat`, `POST /api/reset`, `POST /api/learn`, `GET /api/recall?q=`. Relative URLs in the UI. Run with `uvicorn jarvis.server:get_app --factory --host 0.0.0.0 --port 8000`.
+- `server.py`: hardened FastAPI boundary with optional constant-time bearer/header authentication, failed-auth throttling, per-client expensive-route rate limiting, bounded Pydantic inputs, health endpoint, no-store/security headers, and routes: `GET /`, `GET /api/status`, `POST /api/chat`, `POST /api/reset`, `POST /api/learn`, `GET /api/recall?q=`. Relative URLs in the UI. Run with `uvicorn zehnora.server:get_app --factory --host 0.0.0.0 --port 8000`.
 - `web/index.html`: chat, learn panel, recall panel, mic and speaker buttons.
 - `cli.py` and `__main__.py`: terminal REPL. Commands: `exit`, `reset`.
-- `tests/test_jarvis.py` plus `test_server.py`: 75 offline tests (chunking, FTS, parsing, file confinement, tool errors, intents, agent loop, end-to-end learn then recall). Run with `pytest -q jarvis/tests`. They use fixtures and scripted models, with no network.
+- `tests/test_zehnora.py` plus `test_server.py`: 75 offline tests (chunking, FTS, parsing, file confinement, tool errors, intents, agent loop, end-to-end learn then recall). Run with `pytest -q zehnora/tests`. They use fixtures and scripted models, with no network.
 
 Known gaps and bugs:
 - The default offline brain is not generative, but now answers direct questions extractively, summarizes learned topics, lists sources, and emits inline citations. The optional Hugging Face backend provides generative local reasoning.
 - The DuckDuckGo search was **never tested live** (the sandbox has no route to it). Parsing is tested only on a fixture. Expect breakage if the HTML changes.
 - `learn_deep` filters short pages and deduplicates URLs/exact content during each run, but does not yet read PDFs or detect semantic near-duplicates across separate runs.
 - Retrieval is hybrid BM25 + concept graph, not neural embeddings. The graph records co-occurrence, so it must never be presented as proof of causation.
-- Optional `JARVIS_ACCESS_TOKEN` authentication, failed-auth throttling, and request rate limits are implemented. Packaged web startup binds to loopback by default; any non-loopback commercial deployment still needs TLS and network controls.
+- Optional `ZEHNORA_ACCESS_TOKEN` authentication, failed-auth throttling, and request rate limits are implemented. Packaged web startup binds to loopback by default; any non-loopback commercial deployment still needs TLS and network controls.
 - Commands require both enablement and an executable allowlist, use `shell=False`, a restricted PATH, workspace cwd, and a 60-second cap. Consumer releases still need OS sandboxing before enabling commands.
 - The desktop GUI, device and smart-home control, and live voice in the terminal are not built.
 
@@ -59,13 +59,13 @@ Known gaps and bugs:
 
 - Work only on branch `arena/a202685b-ai`. Push only to it. Never create or switch branches.
 - Never commit or request secrets. The user sets environment variables themselves.
-- Keep `jarvis/data/` and `~/jarvis_workspace` out of Git (`jarvis/data/` is in `.gitignore`).
-- Run `pytest -q jarvis/tests` before every commit. It must pass.
+- Keep `zehnora/data/` and `~/zehnora_workspace` out of Git (`zehnora/data/` is in `.gitignore`).
+- Run `pytest -q zehnora/tests` before every commit. It must pass.
 - After changing server code, restart the uvicorn process (it does not reload automatically).
 - Keep every intelligence path local. Do not reintroduce hosted-model or paid API clients, even as opt-in options.
 - Keep file tools inside the workspace. Keep shell off by default.
 - When you add a tool, register it in `tools.build_registry`, give it a JSON schema, and add a test.
-- Update this file and `jarvis/README.md` when you change the design.
+- Update this file and `zehnora/README.md` when you change the design.
 
 ## 6. Quick map
 
@@ -90,7 +90,8 @@ Known gaps and bugs:
 
 ## 7. History of decisions
 
-- The user first asked for a JARVIS-like assistant, with voice, command execution, and learning of any domain. Platforms: web and desktop.
+- The user first asked for a cinematic-style assistant with voice, command execution, and learning of any domain. Platforms: web and desktop.
+- On 2026-10-11 the product was fully rebranded to the coined working name Zehnora (`ذهنورا`). Exact-name GitHub search returned no repository, but `sales/BRAND_CLEARANCE.md` explicitly blocks paid launch pending formal trademark/domain/common-law clearance.
 - Brain choice: an LLM-style tool-using agent with a knowledge base, not the spiking model. Reason: the spiking model cannot serve as an assistant core.
 - The user rejected all API-key/hosted-model options. They were removed completely. Runtime intelligence must remain on-device.
 - The brain project was paused by the user. Its emotion regions (amygdala, orbitofrontal, insula, anterior cingulate) were removed on purpose. Do not add emotion back.

@@ -1,4 +1,4 @@
-name: Jarvis CI
+name: Zehnora CI
 
 on:
   push:
@@ -22,10 +22,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
           cache: pip
       - run: python -m pip install --upgrade pip "setuptools>=83"
-      - run: python -m pip install -r jarvis/requirements-dev.txt
-      - run: python -m py_compile jarvis/*.py jarvis/scripts/*.py
-      - run: ruff check jarvis
-      - run: bandit -q -r jarvis -x jarvis/tests
+      - run: python -m pip install -r zehnora/requirements-dev.txt
+      - run: python -m py_compile zehnora/*.py zehnora/scripts/*.py
+      - run: ruff check zehnora
+      - run: bandit -q -r zehnora -x zehnora/tests
       - run: python -m pytest -q
       - run: pip-audit
 
@@ -39,4 +39,4 @@ jobs:
       - run: python -m pip install --upgrade pip "setuptools>=83" build
       - run: python -m build
       - run: python -m pip install dist/*.whl
-      - run: jarvis-local "time"
+      - run: zehnora-local "time"

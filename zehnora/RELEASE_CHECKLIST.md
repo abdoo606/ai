@@ -32,7 +32,7 @@ seller should complete every applicable item before distributing a build.
       deletion/export controls appropriate to the markets where it is sold.
 - [ ] Review copyright/database rights for archived web content. Selling the
       software does not grant redistribution rights to learned source material.
-- [ ] Verify the product name, branding, and “Jarvis” trademark risk with counsel.
+- [ ] Verify the product name, branding, and “Zehnora” trademark risk with counsel.
 - [ ] Provide attribution and license notices for Python packages and models.
 - [ ] Sign installers, publish checksums, define an update channel, and document
       vulnerability response and supported versions.

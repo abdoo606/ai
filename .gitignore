@@ -15,9 +15,9 @@ __pycache__/
 /Connectivity_783.parquet
 /.*.part
 
-# Jarvis runtime state and locally downloaded model weights.
-/jarvis/data/
-/jarvis/models/
+# Zehnora runtime state and locally downloaded model weights.
+/zehnora/data/
+/zehnora/models/
 
 # A simulation may produce gigabytes of results. Keep the upstream example output.
 /results/*

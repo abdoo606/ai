@@ -15,19 +15,19 @@ real credentials or private user data.
 ## Deployment baseline
 
 - The packaged web command binds to `127.0.0.1` by default.
-- If exposed beyond loopback, set a long random `JARVIS_ACCESS_TOKEN`, terminate
+- If exposed beyond loopback, set a long random `ZEHNORA_ACCESS_TOKEN`, terminate
   TLS in a maintained reverse proxy, and restrict network access.
 - Web fetching blocks loopback, private, link-local, reserved IPs, URL
   credentials, unsafe redirects, unsupported content types, and pages over 2 MB.
-- Keep `JARVIS_ALLOW_PRIVATE_WEB=0` unless local-network reading is intentional.
-- Command execution is absent unless both `JARVIS_ALLOW_SHELL=1` and a minimal
-  `JARVIS_ALLOWED_COMMANDS` allowlist are set. Commands run without a shell.
+- Keep `ZEHNORA_ALLOW_PRIVATE_WEB=0` unless local-network reading is intentional.
+- Command execution is absent unless both `ZEHNORA_ALLOW_SHELL=1` and a minimal
+  `ZEHNORA_ALLOWED_COMMANDS` allowlist are set. Commands run without a shell.
 - The model installer resolves exact Hub commit revisions and records them in
   `manifest.json`. Preserve this manifest in release evidence; never silently
   update production weights from a mutable branch.
 - Model weights, memory databases, access tokens, and workspaces must never be
   committed or included in support bundles.
-- Run as an unprivileged OS account. Do not run Jarvis as root.
+- Run as an unprivileged OS account. Do not run Zehnora as root.
 
 ## Threat-model limits
 

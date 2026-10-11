@@ -3,14 +3,14 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "local-jarvis-assistant"
-version = "0.5.0"
+name = "local-zehnora-assistant"
+version = "0.6.0"
 description = "API-free local personal assistant with deep research, grounded memory, and deliberative models"
-readme = "jarvis/README.md"
+readme = "zehnora/README.md"
 requires-python = ">=3.10"
 license = "MIT"
 license-files = ["LICENSE"]
-authors = [{name = "Jarvis contributors"}]
+authors = [{name = "Zehnora contributors"}]
 keywords = ["assistant", "local-ai", "offline", "arabic", "agents", "rag"]
 classifiers = [
   "Development Status :: 4 - Beta",
@@ -38,22 +38,22 @@ test = [
 ]
 
 [project.scripts]
-jarvis-local = "jarvis.cli:main"
-jarvis-local-web = "jarvis.cli:serve"
+zehnora-local = "zehnora.cli:main"
+zehnora-local-web = "zehnora.cli:serve"
 
 [project.urls]
 Repository = "https://github.com/abdoo606/ai"
 Issues = "https://github.com/abdoo606/ai/issues"
 
 [tool.setuptools.packages.find]
-include = ["jarvis*"]
-exclude = ["jarvis.tests*"]
+include = ["zehnora*"]
+exclude = ["zehnora.tests*"]
 
 [tool.setuptools.package-data]
-jarvis = ["web/*.html", "requirements*.txt", "*.md"]
+zehnora = ["web/*.html", "requirements*.txt", "*.md"]
 
 [tool.pytest.ini_options]
-testpaths = ["jarvis/tests"]
+testpaths = ["zehnora/tests"]
 addopts = "-ra"
 filterwarnings = [
   "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
@@ -65,4 +65,4 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E4", "E7", "E9", "F", "I", "B", "S"]
-per-file-ignores = {"jarvis/tests/*" = ["S101", "S106"]}
+per-file-ignores = {"zehnora/tests/*" = ["S101", "S106"]}

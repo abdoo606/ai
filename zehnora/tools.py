@@ -3,7 +3,7 @@
 Each tool has a JSON schema (so an LLM can call it) and a Python function.
 Results are plain strings, capped in length, so one tool cannot flood the
 model's context. File tools stay inside the workspace. Shell commands are
-off unless JARVIS_ALLOW_SHELL=1.
+off unless ZEHNORA_ALLOW_SHELL=1.
 """
 
 from __future__ import annotations
@@ -273,7 +273,7 @@ def build_registry(kb: KnowledgeBase, settings: Settings) -> ToolRegistry:
                 return "error: command is empty"
             executable = Path(arguments[0]).name
             if executable not in settings.allowed_commands:
-                return f"error: executable '{executable}' is not in JARVIS_ALLOWED_COMMANDS"
+                return f"error: executable '{executable}' is not in ZEHNORA_ALLOWED_COMMANDS"
             # Executable name is checked against an operator-provided allowlist; no shell is invoked.
             proc = subprocess.run(  # noqa: S603  # nosec B603
                 arguments, shell=False, check=False, cwd=str(workspace), capture_output=True,

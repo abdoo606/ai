@@ -2,7 +2,7 @@
 
 The researcher builds a broad curriculum, searches each part, reads pages,
 deduplicates them, expands promising subtopics, and stores source-grounded text
-in Jarvis's SQLite memory.  It deliberately has a finite source/depth budget:
+in Zehnora's SQLite memory.  It deliberately has a finite source/depth budget:
 "all human knowledge" is not a finishable job, while resumable bounded passes
 are useful and honest.
 """

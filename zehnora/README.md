@@ -1,4 +1,4 @@
-# Jarvis
+# Zehnora
 
 A personal assistant with tools, memory and web learning. It runs in a browser (with voice input and spoken replies) or in a terminal.
 
@@ -11,24 +11,24 @@ It is standalone: the default needs no API key and no external model. Everything
 - **Fast recall**: SQLite FTS5/BM25, indexed graph edges, a 32 MiB page cache, WAL mode, and cached query expansions keep retrieval lightweight without an embedding server.
 - **Grounded answers**: local extractive answering cites every source, compares connected evidence, and does not invent unsupported text.
 - **Arabic retrieval**: Arabic diacritics, alef variants, and ya/alef-maqsura variants are normalized in the search index while original source text is preserved.
-- **Powerful local deliberation (optional)**: Jarvis runs an intent pass, senior reasoning pass, adversarial verification pass, and final Arabic/English revision. The reasoner, critic, and language writers are separate logical brains that share one strong physical model in memory.
+- **Powerful local deliberation (optional)**: Zehnora runs an intent pass, senior reasoning pass, adversarial verification pass, and final Arabic/English revision. The reasoner, critic, and language writers are separate logical brains that share one strong physical model in memory.
 - **Hardware profiles**: `compact` (Qwen3-4B), `balanced` (8B), `powerful` (14B), `max` (32B), and server-class `frontier` (Qwen3-235B-A22B). Larger profiles improve capability but need dramatically more RAM/GPU memory.
 - **Robust intent**: a smaller multilingual model plus a fast fuzzy fallback recovers meaning from incomplete, dialectal, abbreviated, or misspelled Arabic/English commands.
 - **Web search and reading**: DuckDuckGo search, and readable text from any http(s) page.
-- **Files**: read, write and list files, **only inside the workspace** (`~/jarvis_workspace` by default). Paths that escape it are refused.
-- **Commands**: disabled by default. Enabling requires both `JARVIS_ALLOW_SHELL=1` and an executable allowlist; commands run with `shell=False` inside the workspace.
-- **Interfaces**: web page (`/`) with a chat, a learn panel, and microphone and speaker buttons (Chrome or Edge); terminal mode (`python -m jarvis`).
+- **Files**: read, write and list files, **only inside the workspace** (`~/zehnora_workspace` by default). Paths that escape it are refused.
+- **Commands**: disabled by default. Enabling requires both `ZEHNORA_ALLOW_SHELL=1` and an executable allowlist; commands run with `shell=False` inside the workspace.
+- **Interfaces**: web page (`/`) with a chat, a learn panel, and microphone and speaker buttons (Chrome or Edge); terminal mode (`python -m zehnora`).
 
 ## Setup
 
 ```bash
 # Source checkout
-pip install -r jarvis/requirements.txt
+pip install -r zehnora/requirements.txt
 
 # Or install the packaged application and console commands
 pip install .
-jarvis-local "time"
-jarvis-local-web                 # binds safely to 127.0.0.1 by default
+zehnora-local "time"
+zehnora-local-web                 # binds safely to 127.0.0.1 by default
 ```
 
 Python 3.10 or newer. SQLite with FTS5 is included in standard Python builds.
@@ -36,17 +36,17 @@ Python 3.10 or newer. SQLite with FTS5 is included in standard Python builds.
 ### Optional: powerful local reasoning
 
 ```bash
-pip install -r jarvis/requirements-huggingface.txt
+pip install -r zehnora/requirements-huggingface.txt
 
 # Preview model sizes/paths without downloading.
-python jarvis/scripts/install_models.py --profile powerful --dry-run
+python zehnora/scripts/install_models.py --profile powerful --dry-run
 
 # One-time public download; no account or API key. The default powerful profile
 # uses Qwen3-14B for shared reasoning/writing and Qwen3-1.7B for intent.
-python jarvis/scripts/install_models.py --profile powerful
+python zehnora/scripts/install_models.py --profile powerful
 
 # Later runs are fully local and use a deliberate reason → critique → revise loop.
-JARVIS_BACKEND=powerful python -m jarvis
+ZEHNORA_BACKEND=powerful python -m zehnora
 ```
 
 Profiles: `compact` uses Qwen3-4B, `balanced` uses Qwen3-8B, `powerful` uses
@@ -55,7 +55,7 @@ multi-GPU/server hardware. The strong model is loaded once and shared
 by senior reasoner, critic, Arabic writer, and English writer role prompts. This
 avoids four copies in memory. The installer resolves and records immutable model
 commit revisions for reproducible/supply-chain-aware releases.
-`JARVIS_REASONING_ROUNDS=1..3` trades latency for
+`ZEHNORA_REASONING_ROUNDS=1..3` trades latency for
 additional critique/revision passes. The single-model and simple ensemble modes
 remain available as `huggingface` and `ensemble`.
 
@@ -63,33 +63,33 @@ remain available as `huggingface` and `ensemble`.
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `JARVIS_BACKEND` | `offline` | `powerful` enables deliberate local reasoning; `ensemble`, `huggingface`, and `offline` are lighter modes. No hosted/API backend. |
-| `JARVIS_HF_REASONING_MODEL` | `jarvis/models/reasoning` | Senior reasoning model folder. |
-| `JARVIS_HF_CRITIC_MODEL` | `jarvis/models/reasoning` | Verifier model folder; shared by default to avoid duplicate weights. |
-| `JARVIS_HF_ENGLISH_MODEL` | `jarvis/models/reasoning` | English writer model folder. |
-| `JARVIS_HF_ARABIC_MODEL` | `jarvis/models/reasoning` | Arabic writer model folder. |
-| `JARVIS_HF_INTENT_MODEL` | `jarvis/models/intent` | Fast multilingual intent model folder. |
-| `JARVIS_HF_MODEL` | `jarvis/models/brain` | Folder for legacy single-model mode. |
-| `JARVIS_HF_ALLOW_DOWNLOAD` | `0` | Runtime downloads are blocked by default; use the explicit installer. |
-| `JARVIS_HF_REVISION` | empty | Immutable commit SHA required if runtime download is deliberately enabled. |
-| `JARVIS_HF_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or a CUDA device index such as `0`. |
-| `JARVIS_HF_MAX_NEW_TOKENS` | `1024` | Maximum tokens from reasoning/writer passes. |
-| `JARVIS_HF_INTENT_MAX_NEW_TOKENS` | `256` | Maximum tokens from the intent pass. |
-| `JARVIS_REASONING_ROUNDS` | `1` | Critique/revision rounds, clamped to 1–3. |
-| `JARVIS_HOME` | `jarvis/data` | Where the knowledge base is stored. Git-ignored. |
-| `JARVIS_WORKSPACE` | `~/jarvis_workspace` | The only folder the file tools can touch. |
-| `JARVIS_ACCESS_TOKEN` | empty | Optional local web access token; required outside loopback deployments. |
-| `JARVIS_RATE_LIMIT_PER_MINUTE` | `60` | Per-client limit for chat/research requests (1–600). |
-| `JARVIS_ALLOW_PRIVATE_WEB` | `0` | Permit fetching local/private network URLs. Keep off for normal use. |
-| `JARVIS_ALLOW_SHELL` | `0` | First switch required for command execution. |
-| `JARVIS_ALLOWED_COMMANDS` | empty | Comma-separated executable allowlist, e.g. `python,git`; empty keeps commands unavailable. |
+| `ZEHNORA_BACKEND` | `offline` | `powerful` enables deliberate local reasoning; `ensemble`, `huggingface`, and `offline` are lighter modes. No hosted/API backend. |
+| `ZEHNORA_HF_REASONING_MODEL` | `zehnora/models/reasoning` | Senior reasoning model folder. |
+| `ZEHNORA_HF_CRITIC_MODEL` | `zehnora/models/reasoning` | Verifier model folder; shared by default to avoid duplicate weights. |
+| `ZEHNORA_HF_ENGLISH_MODEL` | `zehnora/models/reasoning` | English writer model folder. |
+| `ZEHNORA_HF_ARABIC_MODEL` | `zehnora/models/reasoning` | Arabic writer model folder. |
+| `ZEHNORA_HF_INTENT_MODEL` | `zehnora/models/intent` | Fast multilingual intent model folder. |
+| `ZEHNORA_HF_MODEL` | `zehnora/models/brain` | Folder for legacy single-model mode. |
+| `ZEHNORA_HF_ALLOW_DOWNLOAD` | `0` | Runtime downloads are blocked by default; use the explicit installer. |
+| `ZEHNORA_HF_REVISION` | empty | Immutable commit SHA required if runtime download is deliberately enabled. |
+| `ZEHNORA_HF_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or a CUDA device index such as `0`. |
+| `ZEHNORA_HF_MAX_NEW_TOKENS` | `1024` | Maximum tokens from reasoning/writer passes. |
+| `ZEHNORA_HF_INTENT_MAX_NEW_TOKENS` | `256` | Maximum tokens from the intent pass. |
+| `ZEHNORA_REASONING_ROUNDS` | `1` | Critique/revision rounds, clamped to 1–3. |
+| `ZEHNORA_HOME` | `zehnora/data` | Where the knowledge base is stored. Git-ignored. |
+| `ZEHNORA_WORKSPACE` | `~/zehnora_workspace` | The only folder the file tools can touch. |
+| `ZEHNORA_ACCESS_TOKEN` | empty | Optional local web access token; required outside loopback deployments. |
+| `ZEHNORA_RATE_LIMIT_PER_MINUTE` | `60` | Per-client limit for chat/research requests (1–600). |
+| `ZEHNORA_ALLOW_PRIVATE_WEB` | `0` | Permit fetching local/private network URLs. Keep off for normal use. |
+| `ZEHNORA_ALLOW_SHELL` | `0` | First switch required for command execution. |
+| `ZEHNORA_ALLOWED_COMMANDS` | empty | Comma-separated executable allowlist, e.g. `python,git`; empty keeps commands unavailable. |
 
 ## Run
 
 Web (listens on all interfaces, port 8000):
 
 ```bash
-uvicorn jarvis.server:get_app --factory --host 0.0.0.0 --port 8000
+uvicorn zehnora.server:get_app --factory --host 0.0.0.0 --port 8000
 ```
 
 Then open `http://localhost:8000`.
@@ -97,9 +97,9 @@ Then open `http://localhost:8000`.
 Terminal:
 
 ```bash
-python -m jarvis                  # interactive
-python -m jarvis "learn qubits"   # deep-learning pass
-python -m jarvis "اربط الطاقة والكتلة"  # inspect evidence-backed links
+python -m zehnora                  # interactive
+python -m zehnora "learn qubits"   # deep-learning pass
+python -m zehnora "اربط الطاقة والكتلة"  # inspect evidence-backed links
 ```
 
 Databases created before the concept-graph upgrade can be indexed once from
@@ -130,7 +130,7 @@ chat with `rebuild connections` through the tool interface, or by calling the
 ## Tests
 
 ```bash
-pip install -r jarvis/requirements-dev.txt
+pip install -r zehnora/requirements-dev.txt
 pytest -q
 python -m build
 ```
@@ -143,7 +143,7 @@ runs it on Python 3.10–3.12.
 
 ## Security notes
 
-- The packaged server binds to loopback. Set `JARVIS_ACCESS_TOKEN` plus TLS/reverse-proxy network controls before exposing it elsewhere.
+- The packaged server binds to loopback. Set `ZEHNORA_ACCESS_TOKEN` plus TLS/reverse-proxy network controls before exposing it elsewhere.
 - Files are confined to the workspace after path resolution.
 - Commands require two explicit switches, an executable allowlist, run with `shell=False`, have a 60-second maximum, and use a restricted `PATH`.
 - Web fetching blocks URL credentials, private/loopback/link-local/reserved targets, unsafe redirects, unsupported content types, and pages over 2 MB. Private fetches require explicit opt-in.
@@ -157,9 +157,9 @@ See [SECURITY.md](SECURITY.md) for reporting/deployment guidance and
 
 - A local 14B/32B model is not guaranteed to equal Claude's frontier-scale training, context, or reliability. The deliberate multi-pass pipeline closes part of the quality gap, but hardware and model size remain real limits.
 - The `powerful` profile needs roughly 36 GB system RAM with unquantized Transformers weights; `max` needs roughly 80 GB. `frontier` is server-class and can require roughly 500 GB unquantized memory. Use `balanced`/`compact` on smaller machines or add a quantized model manually.
-- The default offline mode can route commands and answer from stored sources extractively, but it is not a generative conversational model. Use `JARVIS_BACKEND=powerful` for the strongest local mode.
+- The default offline mode can route commands and answer from stored sources extractively, but it is not a generative conversational model. Use `ZEHNORA_BACKEND=powerful` for the strongest local mode.
 - Deep learning needs public websites while it is researching; answering from already archived memory works offline. Search providers and source sites can change or rate-limit.
-- No finite system can literally download “everything in the world.” Jarvis uses explicit source/depth budgets, reports what it covered, and can run more passes.
+- No finite system can literally download “everything in the world.” Zehnora uses explicit source/depth budgets, reports what it covered, and can run more passes.
 - Learned text is stored as-is. Check important answers against the cited sources.
 - Not yet built: a desktop GUI, device and smart-home control, and live voice in the terminal.
 

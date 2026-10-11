@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Jarvis</title>
+<title>Zehnora</title>
 <style>
   :root { --bg:#0b1220; --panel:#131d30; --line:#22304d; --text:#e6edf7; --muted:#8fa0bf; --accent:#27d3ff; --user:#1e3a5f; --bot:#192740; }
   * { box-sizing: border-box; }
@@ -34,7 +34,7 @@
 <body>
 <header>
   <span class="dot" id="dot"></span>
-  <h1>JARVIS</h1>
+  <h1>ZEHNORA</h1>
   <span class="status" id="status">connecting…</span>
 </header>
 <main>
@@ -76,20 +76,20 @@ function add(role, text) {
   return d;
 }
 
-let accessToken = sessionStorage.getItem('jarvis-access-token') || '';
+let accessToken = sessionStorage.getItem('zehnora-access-token') || '';
 
 async function api(path, body, retried = false) {
   const headers = {};
   if (body !== undefined) headers['Content-Type'] = 'application/json';
-  if (accessToken) headers['X-Jarvis-Token'] = accessToken;
+  if (accessToken) headers['X-Zehnora-Token'] = accessToken;
   const opts = {headers};
   if (body !== undefined) { opts.method = 'POST'; opts.body = JSON.stringify(body); }
   const r = await fetch(path, opts);   // relative URL: works behind the preview proxy
   if (r.status === 401 && !retried) {
-    const supplied = prompt('Jarvis access token:');
+    const supplied = prompt('Zehnora access token:');
     if (supplied) {
       accessToken = supplied;
-      sessionStorage.setItem('jarvis-access-token', supplied);
+      sessionStorage.setItem('zehnora-access-token', supplied);
       return api(path, body, true);
     }
   }

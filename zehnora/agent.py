@@ -10,7 +10,7 @@ from .knowledge import KnowledgeBase
 from .llm import LLM, LLMError, make_llm
 from .tools import ToolRegistry, build_registry
 
-SYSTEM_PROMPT = """You are Jarvis, a capable personal assistant.
+SYSTEM_PROMPT = """You are Zehnora, a capable personal assistant.
 - Answer in the language the user writes in (Arabic or English).
 - Use tools when they help: web search for current facts, recall for stored knowledge,
   learn_deep when the user asks you to learn a field, files only inside the workspace.

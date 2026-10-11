@@ -1,4 +1,4 @@
-"""Language-model backends for Jarvis.
+"""Language-model backends for Zehnora.
 
 All backends are local and share ``chat(messages, tools) -> reply``:
 
@@ -37,9 +37,9 @@ class HuggingFaceTransformersLLM:
     brains without loading identical multi-billion-parameter weights four times.
 
     Model loading is delayed until the first message, so importing and serving
-    Jarvis stays fast. Downloads are disabled by default: point
-    ``JARVIS_HF_MODEL`` at a local model folder, or explicitly opt in once with
-    ``JARVIS_HF_ALLOW_DOWNLOAD=1``.
+    Zehnora stays fast. Downloads are disabled by default: point
+    ``ZEHNORA_HF_MODEL`` at a local model folder, or explicitly opt in once with
+    ``ZEHNORA_HF_ALLOW_DOWNLOAD=1``.
     """
 
     _shared_generators: Dict[tuple, Any] = {}
@@ -70,13 +70,13 @@ class HuggingFaceTransformersLLM:
             except ImportError as error:
                 raise LLMError(
                     "Hugging Face backend needs optional packages: "
-                    "pip install -r jarvis/requirements-huggingface.txt"
+                    "pip install -r zehnora/requirements-huggingface.txt"
                 ) from error
             kwargs = {"local_files_only": not self.allow_download, "low_cpu_mem_usage": True}
             if self.allow_download and not self.revision:
                 raise LLMError(
-                    "runtime model downloads require an immutable JARVIS_HF_REVISION; "
-                    "prefer jarvis/scripts/install_models.py"
+                    "runtime model downloads require an immutable ZEHNORA_HF_REVISION; "
+                    "prefer zehnora/scripts/install_models.py"
                 )
             try:
                 tokenizer = AutoTokenizer.from_pretrained(
@@ -96,8 +96,8 @@ class HuggingFaceTransformersLLM:
                 self._generator = generator
             except Exception as error:
                 hint = (
-                    "Install a local model profile with jarvis/scripts/install_models.py, or explicitly set "
-                    "JARVIS_HF_ALLOW_DOWNLOAD=1 for initial setup."
+                    "Install a local model profile with zehnora/scripts/install_models.py, or explicitly set "
+                    "ZEHNORA_HF_ALLOW_DOWNLOAD=1 for initial setup."
                 )
                 raise LLMError(f"could not load local model '{self.model}': {error}. {hint}") from error
         return self._generator
@@ -106,31 +106,31 @@ class HuggingFaceTransformersLLM:
         schemas = json.dumps(tools or [], ensure_ascii=False, separators=(",", ":"))
         if self.purpose == "intent":
             role = (
-                "You are Jarvis's multilingual intent brain. Infer what the user means even when Arabic or "
+                "You are Zehnora's multilingual intent brain. Infer what the user means even when Arabic or "
                 "English is dialectal, misspelled, abbreviated, missing punctuation, or incomplete. Prefer a "
                 "tool call whenever intent and arguments can be recovered. Never invent a missing destructive "
                 "argument; ask one short clarification instead."
             )
         elif self.purpose == "arabic":
             role = (
-                "You are Jarvis's Arabic reasoning brain. Understand Modern Standard Arabic and Levantine "
+                "You are Zehnora's Arabic reasoning brain. Understand Modern Standard Arabic and Levantine "
                 "dialect, including informal and imperfect spelling. Answer naturally in the user's dialect."
             )
         elif self.purpose == "english":
-            role = "You are Jarvis's English answer writer. Produce precise, natural English."
+            role = "You are Zehnora's English answer writer. Produce precise, natural English."
         elif self.purpose == "reasoner":
             role = (
-                "You are Jarvis's senior reasoning brain. Decompose difficult tasks, use tools for missing "
+                "You are Zehnora's senior reasoning brain. Decompose difficult tasks, use tools for missing "
                 "evidence, connect facts across sources, test assumptions, calculate carefully, and draft a "
                 "complete answer. Prefer correctness over speed."
             )
         elif self.purpose == "critic":
             role = (
-                "You are Jarvis's adversarial verifier. Find unsupported claims, missed constraints, logical "
+                "You are Zehnora's adversarial verifier. Find unsupported claims, missed constraints, logical "
                 "gaps, contradictions, unsafe actions, and citation problems. Give concise actionable fixes."
             )
         else:
-            role = "You are Jarvis, a concise local personal assistant. Reply in the user's language."
+            role = "You are Zehnora, a concise local personal assistant. Reply in the user's language."
         return (
             role + " For complex questions, reason internally in steps: retrieve evidence, inspect concept "
             "links, compare sources and contradictions, then provide only the conclusion and supporting "

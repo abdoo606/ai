@@ -1,6 +1,6 @@
-"""Offline tests for Jarvis. No network, no API key, no real model.
+"""Offline tests for Zehnora. No network, no API key, no real model.
 
-Run: pytest -q jarvis/tests
+Run: pytest -q zehnora/tests
 """
 
 import json
@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from jarvis import web
-from jarvis.agent import Assistant
-from jarvis.config import load_settings
-from jarvis.knowledge import KnowledgeBase, chunk_text, normalize_text
-from jarvis.llm import (
+from zehnora import web
+from zehnora.agent import Assistant
+from zehnora.config import load_settings
+from zehnora.knowledge import KnowledgeBase, chunk_text, normalize_text
+from zehnora.llm import (
     DeliberativeLocalLLM,
     HuggingFaceTransformersLLM,
     LLMError,
@@ -22,16 +22,16 @@ from jarvis.llm import (
     detect_language,
     make_llm,
 )
-from jarvis.research import DeepResearcher, canonical_url, curriculum_queries, discover_subtopics
-from jarvis.tools import build_registry
+from zehnora.research import DeepResearcher, canonical_url, curriculum_queries, discover_subtopics
+from zehnora.tools import build_registry
 
 # ---------- fixtures -------------------------------------------------------
 
 @pytest.fixture
 def settings(tmp_path):
     return load_settings({
-        "JARVIS_HOME": str(tmp_path / "home"),
-        "JARVIS_WORKSPACE": str(tmp_path / "ws"),
+        "ZEHNORA_HOME": str(tmp_path / "home"),
+        "ZEHNORA_WORKSPACE": str(tmp_path / "ws"),
     })
 
 
@@ -313,15 +313,15 @@ def test_registry_has_expected_tools(kb, settings):
 
 
 def test_shell_only_when_enabled(kb, tmp_path):
-    on = load_settings({"JARVIS_HOME": str(tmp_path), "JARVIS_WORKSPACE": str(tmp_path / "w"),
-                        "JARVIS_ALLOW_SHELL": "1", "JARVIS_ALLOWED_COMMANDS": "echo,python"})
+    on = load_settings({"ZEHNORA_HOME": str(tmp_path), "ZEHNORA_WORKSPACE": str(tmp_path / "w"),
+                        "ZEHNORA_ALLOW_SHELL": "1", "ZEHNORA_ALLOWED_COMMANDS": "echo,python"})
     registry = build_registry(kb, on)
     assert "run_command" in registry.tools
     assert "hello" in registry.call("run_command", {"command": "echo hello"})
-    assert "not in JARVIS_ALLOWED_COMMANDS" in registry.call(
+    assert "not in ZEHNORA_ALLOWED_COMMANDS" in registry.call(
         "run_command", {"command": "sh -c 'touch escaped'"})
-    shell_without_allowlist = load_settings({"JARVIS_HOME": str(tmp_path),
-                                             "JARVIS_ALLOW_SHELL": "1"})
+    shell_without_allowlist = load_settings({"ZEHNORA_HOME": str(tmp_path),
+                                             "ZEHNORA_ALLOW_SHELL": "1"})
     assert "run_command" not in build_registry(kb, shell_without_allowlist).tools
 
 
@@ -483,32 +483,32 @@ def test_end_to_end_offline_learn_then_recall(settings, fake_web):
 
 
 def test_settings_default_to_offline_and_has_no_api_configuration(tmp_path):
-    settings = load_settings({"JARVIS_HOME": str(tmp_path), "JARVIS_LLM_API_KEY": "ignored"})
+    settings = load_settings({"ZEHNORA_HOME": str(tmp_path), "ZEHNORA_LLM_API_KEY": "ignored"})
     assert settings.llm_mode == "offline-rules" and settings.allow_shell is False
     assert not hasattr(settings, "llm_api_key")
     # Hosted backend names cannot activate a network model.
-    assert load_settings({"JARVIS_BACKEND": "openai"}).llm_mode == "offline-rules"
+    assert load_settings({"ZEHNORA_BACKEND": "openai"}).llm_mode == "offline-rules"
 
 
 def test_huggingface_backend_is_opt_in_local_and_lazy(tmp_path):
     settings = load_settings({
-        "JARVIS_HOME": str(tmp_path),
-        "JARVIS_BACKEND": "huggingface",
-        "JARVIS_HF_MODEL": str(tmp_path / "model"),
+        "ZEHNORA_HOME": str(tmp_path),
+        "ZEHNORA_BACKEND": "huggingface",
+        "ZEHNORA_HF_MODEL": str(tmp_path / "model"),
     })
     assert settings.llm_mode == "huggingface-local"
     assert settings.hf_allow_download is False
     model = make_llm(settings)
     assert isinstance(model, HuggingFaceTransformersLLM)
-    assert model._generator is None  # importing Jarvis does not load a multi-GB model
+    assert model._generator is None  # importing Zehnora does not load a multi-GB model
 
 
 def test_three_model_ensemble_configuration_is_local_and_lazy(tmp_path):
     settings = load_settings({
-        "JARVIS_HOME": str(tmp_path), "JARVIS_BACKEND": "ensemble",
-        "JARVIS_HF_ENGLISH_MODEL": str(tmp_path / "en"),
-        "JARVIS_HF_ARABIC_MODEL": str(tmp_path / "ar"),
-        "JARVIS_HF_INTENT_MODEL": str(tmp_path / "intent"),
+        "ZEHNORA_HOME": str(tmp_path), "ZEHNORA_BACKEND": "ensemble",
+        "ZEHNORA_HF_ENGLISH_MODEL": str(tmp_path / "en"),
+        "ZEHNORA_HF_ARABIC_MODEL": str(tmp_path / "ar"),
+        "ZEHNORA_HF_INTENT_MODEL": str(tmp_path / "intent"),
     })
     model = make_llm(settings)
     assert settings.llm_mode == "local-ensemble"
@@ -520,7 +520,7 @@ def test_three_model_ensemble_configuration_is_local_and_lazy(tmp_path):
 
 
 def test_language_detection_routes_mixed_and_incomplete_text():
-    assert detect_language("مرحبا Jarvis بدي help") == "arabic"
+    assert detect_language("مرحبا Zehnora بدي help") == "arabic"
     assert detect_language("please explain physics") == "english"
 
 
@@ -567,11 +567,11 @@ def test_ensemble_accepts_intent_model_tool_decision():
 
 def test_powerful_backend_builds_shared_weight_deliberative_brains(tmp_path):
     settings = load_settings({
-        "JARVIS_HOME": str(tmp_path), "JARVIS_BACKEND": "powerful",
-        "JARVIS_HF_REASONING_MODEL": str(tmp_path / "reasoning"),
-        "JARVIS_HF_CRITIC_MODEL": str(tmp_path / "reasoning"),
-        "JARVIS_HF_ENGLISH_MODEL": str(tmp_path / "reasoning"),
-        "JARVIS_HF_ARABIC_MODEL": str(tmp_path / "reasoning"),
+        "ZEHNORA_HOME": str(tmp_path), "ZEHNORA_BACKEND": "powerful",
+        "ZEHNORA_HF_REASONING_MODEL": str(tmp_path / "reasoning"),
+        "ZEHNORA_HF_CRITIC_MODEL": str(tmp_path / "reasoning"),
+        "ZEHNORA_HF_ENGLISH_MODEL": str(tmp_path / "reasoning"),
+        "ZEHNORA_HF_ARABIC_MODEL": str(tmp_path / "reasoning"),
     })
     model = make_llm(settings)
     assert settings.llm_mode == "local-deliberative"

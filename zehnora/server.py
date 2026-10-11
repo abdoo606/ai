@@ -1,4 +1,4 @@
-"""Hardened local web server and JSON endpoints for Jarvis."""
+"""Hardened local web server and JSON endpoints for Zehnora."""
 
 from __future__ import annotations
 
@@ -30,7 +30,7 @@ class LearnIn(BaseModel):
 
 
 def create_app(assistant: Assistant | None = None, settings: Settings | None = None) -> FastAPI:
-    app = FastAPI(title="Jarvis", version=__version__, docs_url=None, redoc_url=None)
+    app = FastAPI(title="Zehnora", version=__version__, docs_url=None, redoc_url=None)
     settings = settings or load_settings()
     bot = assistant or Assistant.from_settings(settings)
     conversation_lock = threading.Lock()
@@ -43,7 +43,7 @@ def create_app(assistant: Assistant | None = None, settings: Settings | None = N
         path = request.url.path
         identity = request.client.host if request.client else "unknown"
         if path.startswith("/api/") and path != "/api/health" and settings.access_token:
-            supplied = request.headers.get("x-jarvis-token", "")
+            supplied = request.headers.get("x-zehnora-token", "")
             authorization = request.headers.get("authorization", "")
             if authorization.lower().startswith("bearer "):
                 supplied = authorization[7:].strip()

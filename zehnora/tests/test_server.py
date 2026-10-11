@@ -2,8 +2,8 @@
 
 from fastapi.testclient import TestClient
 
-from jarvis.config import load_settings
-from jarvis.server import create_app
+from zehnora.config import load_settings
+from zehnora.server import create_app
 
 
 class FakeTools:
@@ -34,15 +34,15 @@ class FakeAssistant:
 
 def settings(tmp_path, **extra):
     env = {
-        "JARVIS_HOME": str(tmp_path / "home"),
-        "JARVIS_WORKSPACE": str(tmp_path / "workspace"),
+        "ZEHNORA_HOME": str(tmp_path / "home"),
+        "ZEHNORA_WORKSPACE": str(tmp_path / "workspace"),
         **extra,
     }
     return load_settings(env)
 
 
 def test_health_is_public_and_security_headers_are_present(tmp_path):
-    client = TestClient(create_app(FakeAssistant(), settings(tmp_path, JARVIS_ACCESS_TOKEN="secret")))
+    client = TestClient(create_app(FakeAssistant(), settings(tmp_path, ZEHNORA_ACCESS_TOKEN="secret")))
     response = client.get("/api/health")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
@@ -52,22 +52,22 @@ def test_health_is_public_and_security_headers_are_present(tmp_path):
 
 def test_optional_authentication_protects_api_and_accepts_two_header_styles(tmp_path):
     assistant = FakeAssistant()
-    client = TestClient(create_app(assistant, settings(tmp_path, JARVIS_ACCESS_TOKEN="secret")))
+    client = TestClient(create_app(assistant, settings(tmp_path, ZEHNORA_ACCESS_TOKEN="secret")))
     assert client.get("/api/status").status_code == 401
-    assert client.get("/api/status", headers={"X-Jarvis-Token": "wrong"}).status_code == 401
+    assert client.get("/api/status", headers={"X-Zehnora-Token": "wrong"}).status_code == 401
     status = client.get("/api/status", headers={"Authorization": "Bearer secret"})
     assert status.status_code == 200
     assert status.json()["authentication_enabled"] is True
     response = client.post("/api/chat", json={"message": "hello"},
-                           headers={"X-Jarvis-Token": "secret"})
+                           headers={"X-Zehnora-Token": "secret"})
     assert response.json() == {"reply": "reply: hello"}
 
 
 def test_authentication_failures_are_rate_limited(tmp_path):
-    client = TestClient(create_app(FakeAssistant(), settings(tmp_path, JARVIS_ACCESS_TOKEN="secret")))
+    client = TestClient(create_app(FakeAssistant(), settings(tmp_path, ZEHNORA_ACCESS_TOKEN="secret")))
     for _ in range(10):
-        assert client.get("/api/status", headers={"X-Jarvis-Token": "wrong"}).status_code == 401
-    blocked = client.get("/api/status", headers={"X-Jarvis-Token": "wrong"})
+        assert client.get("/api/status", headers={"X-Zehnora-Token": "wrong"}).status_code == 401
+    blocked = client.get("/api/status", headers={"X-Zehnora-Token": "wrong"})
     assert blocked.status_code == 429
     assert blocked.headers["retry-after"] == "60"
 
@@ -99,7 +99,7 @@ def test_learning_endpoint_passes_bounded_arguments_to_tool(tmp_path):
 
 def test_chat_rate_limit_is_enforced_per_client(tmp_path):
     client = TestClient(create_app(
-        FakeAssistant(), settings(tmp_path, JARVIS_RATE_LIMIT_PER_MINUTE="1")
+        FakeAssistant(), settings(tmp_path, ZEHNORA_RATE_LIMIT_PER_MINUTE="1")
     ))
     assert client.post("/api/chat", json={"message": "first"}).status_code == 200
     limited = client.post("/api/chat", json={"message": "second"})

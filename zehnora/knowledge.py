@@ -1,6 +1,6 @@
 """Fast local memory, concept graph, and source-grounded reasoning.
 
-Jarvis combines SQLite FTS5/BM25 retrieval with a lightweight concept graph.
+Zehnora combines SQLite FTS5/BM25 retrieval with a lightweight concept graph.
 The graph links terms that repeatedly occur in the same evidence chunks. Query
 expansion and reciprocal-rank fusion use those links to retrieve multi-hop
 evidence without a remote model or a slow embedding service.
@@ -287,7 +287,7 @@ class KnowledgeBase:
         return len(chunks)
 
     def rebuild_connections(self, topic: Optional[str] = None) -> int:
-        """Rebuild graph data, useful once for databases created by older Jarvis versions."""
+        """Rebuild graph data, useful once for databases created by older Zehnora versions."""
         normalized_topic = normalize_text(topic.strip()) if topic else None
         if normalized_topic:
             self.db.execute("DELETE FROM concepts WHERE topic = ?", (normalized_topic,))

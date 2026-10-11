@@ -11,7 +11,7 @@ import urllib.request
 from html.parser import HTMLParser
 from typing import List, Tuple
 
-USER_AGENT = "Mozilla/5.0 (compatible; JarvisAssistant/0.1; +local)"
+USER_AGENT = "Mozilla/5.0 (compatible; ZehnoraAssistant/0.1; +local)"
 MAX_BYTES = 2_000_000
 TIMEOUT = 15
 

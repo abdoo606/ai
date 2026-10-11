@@ -1,7 +1,7 @@
-"""Desktop terminal mode: talk to Jarvis in the console.
+"""Desktop terminal mode: talk to Zehnora in the console.
 
-    python -m jarvis            # interactive
-    python -m jarvis "what time is it"   # one question
+    python -m zehnora            # interactive
+    python -m zehnora "what time is it"   # one question
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv:
         print(bot.ask(" ".join(argv)))
         return 0
-    print("Jarvis is online. Type 'exit' to quit, 'reset' to clear the conversation.")
+    print("Zehnora is online. Type 'exit' to quit, 'reset' to clear the conversation.")
     while True:
         try:
             text = input("you> ").strip()
@@ -32,16 +32,16 @@ def main(argv: list[str] | None = None) -> int:
             print("conversation cleared")
             continue
         if text:
-            print(f"jarvis> {bot.ask(text)}")
+            print(f"zehnora> {bot.ask(text)}")
 
 
 def serve() -> None:
     """Run the packaged web server, loopback-only unless explicitly configured."""
     import uvicorn
 
-    host = os.environ.get("JARVIS_HOST", "127.0.0.1")
-    port = int(os.environ.get("JARVIS_PORT", "8000"))
-    uvicorn.run("jarvis.server:get_app", factory=True, host=host, port=port)
+    host = os.environ.get("ZEHNORA_HOST", "127.0.0.1")
+    port = int(os.environ.get("ZEHNORA_PORT", "8000"))
+    uvicorn.run("zehnora.server:get_app", factory=True, host=host, port=port)
 
 
 if __name__ == "__main__":
