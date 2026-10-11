@@ -2,7 +2,7 @@ import pytest
 
 from human_brain_agents import Agent, Brain, build_hcp_brain, load_structural, parse_label, module_of
 from human_brain_agents.core import Message
-from human_brain_agents.regions import HomeostatAgent, RelayAgent, SalienceAgent, make_agent
+from human_brain_agents.regions import HomeostatAgent, RelayAgent, is_removed, make_agent
 
 
 VISUAL = ["L_lateraloccipital", "R_lateraloccipital"]
@@ -36,14 +36,25 @@ def test_connectome_data_is_valid():
 
 def test_build_has_region_agents_and_extras():
     brain = build_hcp_brain()
-    assert len(brain.agents) == 85
+    assert len(brain.agents) == 76  # 75 regions + decision agent
+    assert "decision" in brain.agents
     assert "cerebellum" in brain.agents
     assert "brainstem" in brain.agents
     assert "hypothalamus" in brain.agents
     labels, _ = load_structural()
-    # Every connectome region keeps at least one outgoing connection.
-    assert all(len(brain.out_edges[l]) >= 1 for l in labels)
-    assert sum(len(v) for v in brain.out_edges.values()) > 400
+    kept = [l for l in labels if not is_removed(l)]
+    # Every kept connectome region keeps at least one outgoing connection.
+    assert all(len(brain.out_edges[l]) >= 1 for l in kept)
+    assert sum(len(v) for v in brain.out_edges.values()) > 300
+
+
+def test_emotion_circuit_is_removed():
+    brain = build_hcp_brain()
+    assert not any(a.module == "emotion" for a in brain.agents.values())
+    for name in brain.agents:
+        assert "amyg" not in name and "insula" not in name
+    assert is_removed("Lamyg") and is_removed("R_insula") and is_removed("L_medialorbitofrontal")
+    assert not is_removed("L_precentral")
 
 
 def test_label_parsing_and_modules():
@@ -53,6 +64,7 @@ def test_label_parsing_and_modules():
     assert module_of("precentral") == "motor"
     assert module_of("hippocampus") == "memory"
     assert module_of("thalamus") == "thalamus"
+    assert module_of("insula") == "association"  # removed region falls back to default
     assert module_of("superiorparietal") == "association"
     with pytest.raises(ValueError):
         parse_label("X_unknown")
@@ -60,7 +72,6 @@ def test_label_parsing_and_modules():
 
 def test_agent_types_follow_role():
     assert isinstance(make_agent("Lthal"), RelayAgent)
-    assert isinstance(make_agent("Lamyg"), SalienceAgent)
     assert make_agent("L_precentral").__class__.__name__ == "MotorAgent"
     assert make_agent("L_rostralmiddlefrontal").__class__.__name__ == "ControlAgent"
 
@@ -149,13 +160,8 @@ def test_no_learning_keeps_weights_fixed():
     assert before == after
 
 
-def test_salience_raises_arousal_and_thalamus_follows_attention():
+def test_attention_scales_thalamus_relay():
     brain = build_hcp_brain()
-    stimulate(brain, ms=10, targets=["Lamyg", "Ramyg"], strength=3.0)
-    brain.run(20)
-    assert brain.agents["Lamyg"].spike_count > 0
-    assert brain.modulators["arousal"] > 0
-
     relay = brain.agents["Lthal"]
     brain.modulators["attention"] = 0.0
     low = relay.on_input(Message("x", "Lthal", 1.0), 0)
@@ -316,3 +322,97 @@ def test_visualisation_writes_files(tmp_path):
     brain.run(60)
     assert activity_heatmap(brain, tmp_path / "h.png").exists()
     assert graph_snapshot(brain, 0, 40, tmp_path / "g.png").exists()
+
+
+# --- stimuli, decisions and sensory discrimination ---------------------------
+
+from human_brain_agents.stimuli import (  # noqa: E402
+    MODALITY_MODULE, Stimulus, confusion, detection_threshold, early_response_vector,
+    present, run_protocol, similarity_matrix,
+)
+
+
+def test_each_modality_triggers_its_own_action():
+    brain = build_hcp_brain()
+    stims = [Stimulus(m) for m in MODALITY_MODULE for _ in range(2)]
+    results = run_protocol(brain, stims)
+    for r in results:
+        assert r.decided_channel == r.modality
+    table = confusion(results)
+    for m in MODALITY_MODULE:
+        assert table[m][m] == 2
+
+
+def test_each_modality_reaches_its_own_sensory_cortex_first():
+    brain = build_hcp_brain()
+    results = run_protocol(brain, [Stimulus("tactile")])
+    r = results[0]
+    assert r.first_sensory_spike is not None
+    assert r.first_sensory_spike <= 1
+
+
+def test_weak_stimulus_is_not_decided_and_strong_is_faster():
+    def mk():
+        return build_hcp_brain()
+    assert run_protocol(mk(), [Stimulus("visual", intensity=0.3)])[0].decided_action is None
+    weak = run_protocol(mk(), [Stimulus("visual", intensity=1.0)])[0]
+    strong = run_protocol(mk(), [Stimulus("visual", intensity=3.0)])[0]
+    assert weak.reaction_time is not None and strong.reaction_time is not None
+    assert strong.reaction_time <= weak.reaction_time
+
+
+def test_sensory_activity_grows_with_intensity():
+    counts = []
+    for inten in (0.5, 1.5, 3.0):
+        brain = build_hcp_brain()
+        r = run_protocol(brain, [Stimulus("visual", intensity=inten)])[0]
+        counts.append(sum(v for k, v in r.response.items() if brain.agents[k].module == "visual"))
+    assert counts[0] <= counts[1] <= counts[2]
+    assert counts[2] > counts[0]
+
+
+def test_simultaneous_stimuli_give_one_decisive_action():
+    brain = build_hcp_brain()
+    start = brain.tick
+    present(brain, Stimulus("visual"), start=start)
+    present(brain, Stimulus("tactile"), start=start)
+    brain.run(300)
+    commands = brain.agents["decision"].commands
+    assert len(commands) == 1
+
+
+def test_no_stimulus_no_action():
+    brain = build_hcp_brain()
+    brain.run(400)
+    assert brain.agents["decision"].commands == []
+
+
+def test_responses_are_reproducible_and_distinct():
+    sm = similarity_matrix(lambda: build_hcp_brain(), repetitions=3)
+    for m in MODALITY_MODULE:
+        assert sm[m][m] > 0.95
+    for a in MODALITY_MODULE:
+        for b_ in MODALITY_MODULE:
+            if a != b_:
+                assert sm[a][b_] < sm[a][a]
+
+
+def test_stimulus_validation():
+    with pytest.raises(ValueError):
+        Stimulus("smell")
+    with pytest.raises(ValueError):
+        Stimulus("visual", hemisphere="X")
+    with pytest.raises(ValueError):
+        Stimulus("visual", duration=0)
+
+
+def test_detection_threshold_exists_for_visual():
+    t = detection_threshold(lambda: build_hcp_brain(), "visual", [0.2, 0.6, 1.5])
+    assert t is not None and t <= 0.6
+
+
+def test_hemisphere_restricts_targets():
+    from human_brain_agents.stimuli import targets_for
+    brain = build_hcp_brain()
+    left = targets_for(brain, Stimulus("auditory", hemisphere="L"))
+    assert left and all(n.startswith("L_") for n in left)

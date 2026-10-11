@@ -199,13 +199,23 @@ class Brain:
     def edge(self, src: str, dst: str) -> Edge:
         return self.out_edges[src][dst]
 
-    def inject(self, dst: str, strength: float, kind: str = "signal") -> None:
-        """Send an external stimulus (from the environment) to an agent."""
-        if dst not in self.agents:
-            raise KeyError(dst)
-        self._queue[self.tick].append(
-            (dst, Message(src="environment", dst=dst, strength=strength, kind=kind))
-        )
+    def inject(self, dst, strength: float, kind: str = "signal",
+               at: Optional[int] = None) -> None:
+        """Send an external stimulus to one agent, or to several at once.
+
+        ``dst`` can be a name or a list of names. ``at`` is the tick to deliver
+        on (default: now).
+        """
+        names = [dst] if isinstance(dst, str) else list(dst)
+        when = self.tick if at is None else at
+        if when < self.tick:
+            raise ValueError("cannot inject into the past")
+        for name in names:
+            if name not in self.agents:
+                raise KeyError(name)
+            self._queue[when].append(
+                (name, Message(src="environment", dst=name, strength=strength, kind=kind))
+            )
 
     # --- simulation ------------------------------------------------------
     def _deliver(self, tick: int) -> Dict[str, List[Message]]:

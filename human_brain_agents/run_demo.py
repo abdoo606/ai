@@ -1,86 +1,105 @@
-"""Run the brain on visual stimuli and print what happens.
+"""Multi-sensory experiment on the brain model.
 
 Usage (from the repository root):
-    PYTHONPATH=. python human_brain_agents/run_demo.py [--trials N] [--csv spikes.csv]
+    PYTHONPATH=. python human_brain_agents/run_demo.py [--reps N] [--figures DIR] [--csv FILE]
 
-It shows:
-  1. one visual stimulus: latency to motor output and module activity;
-  2. repeated stimuli with learning on: how the motor response changes;
-  3. energy use and the brain's homeostatic gain.
+It runs visual, auditory and tactile stimuli and reports:
+  1. decisions (confusion matrix), reaction times, and motor latency;
+  2. response distinctness (early-wave similarity between senses);
+  3. detection thresholds per sense;
+  4. a figure set: similarity heatmap, activity heatmap, graph snapshot and GIF.
 """
+
+from __future__ import annotations
 
 import argparse
 import csv
+import statistics
 from pathlib import Path
 
 from human_brain_agents import build_hcp_brain
-
-VISUAL = ["L_lateraloccipital", "R_lateraloccipital"]
-MOTOR = ["L_precentral", "R_precentral"]
-
-
-def stimulate(brain, ms=10, strength=1.5):
-    for _ in range(ms):
-        for t in VISUAL:
-            brain.inject(t, strength)
-        brain.step()
+from human_brain_agents.stimuli import (
+    MODALITY_MODULE,
+    Stimulus,
+    confusion,
+    detection_threshold,
+    present,
+    run_protocol,
+    similarity_matrix,
+)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--trials", type=int, default=20)
-    parser.add_argument("--csv", help="write a spike raster (agent, module, tick)")
+    parser.add_argument("--reps", type=int, default=5, help="repetitions per sense")
     parser.add_argument("--figures", default="human_brain_agents/figures",
-                        help="folder for heatmap, graph and GIF ('' to skip)")
+                        help="folder for figures ('' to skip)")
+    parser.add_argument("--csv", help="write a spike raster (agent, module, tick)")
     args = parser.parse_args()
 
-    # 1. One stimulus
-    brain = build_hcp_brain()
-    stimulate(brain)
-    brain.run(190)
-    motor_spikes = sorted(s for m in MOTOR for s in brain.agents[m].spikes)
-    print(f"Agents: {len(brain.agents)}   Connections: {sum(len(v) for v in brain.out_edges.values())}")
-    print(f"Motor output after one visual stimulus: first spike at {motor_spikes[0]} ms,"
-          f" {len(motor_spikes)} spikes in 200 ms")
-    print("\nSpikes per module:")
-    for module, count in sorted(brain.module_activity().items(), key=lambda kv: -kv[1]):
-        print(f"  {module:<14} {count}")
+    make = build_hcp_brain
+    modalities = list(MODALITY_MODULE)
 
-    # 2. Learning over repeated trials
-    print("\nMotor spikes per 100 ms trial (learning on):")
-    brain = build_hcp_brain()
-    brain.learning = True
-    counts = []
-    for _ in range(args.trials):
-        start = brain.tick
-        stimulate(brain)
-        brain.run(90)
-        counts.append(sum(1 for m in MOTOR for s in brain.agents[m].spikes if start <= s < start + 100))
-    print("  " + " ".join(str(c) for c in counts))
-    print(f"  first trial: {counts[0]}   last trial: {counts[-1]}")
+    # 1. Decisions and timing: stimuli in a fixed interleaved order
+    brain = make()
+    order = [m for _ in range(args.reps) for m in modalities]
+    results = run_protocol(brain, [Stimulus(m) for m in order])
+    print(f"Regions: {len(brain.agents) - 1}  + decision agent")
+    print("\nDecisions (rows = presented, columns = decided):")
+    table = confusion(results)
+    header = " " * 10 + "".join(f"{c:>11}" for c in list(MODALITY_MODULE) + ["none"])
+    print(header)
+    for m in modalities:
+        print(f"{m:<10}" + "".join(f"{table[m][c]:>11}" for c in list(MODALITY_MODULE) + ["none"]))
 
-    # 3. Energy and homeostasis
-    print(f"\nMean energy left: {brain.mean_energy_fraction():.3%}   global gain: {brain.global_gain:.2f}")
+    print("\nTiming (ms from stimulus onset):")
+    print(f"{'sense':<10}{'reaction':>16}{'first sensory':>16}{'first motor':>14}")
+    for m in modalities:
+        rts = [r.reaction_time for r in results if r.modality == m and r.reaction_time is not None]
+        sens = [r.first_sensory_spike for r in results if r.modality == m and r.first_sensory_spike is not None]
+        mot = [r.first_motor_spike for r in results if r.modality == m and r.first_motor_spike is not None]
+        rt_s = f"{statistics.mean(rts):.1f} +/- {statistics.pstdev(rts):.1f}" if rts else "no decision"
+        print(f"{m:<10}{rt_s:>16}"
+              f"{statistics.mean(sens) if sens else float('nan'):>16.1f}"
+              f"{statistics.mean(mot) if mot else float('nan'):>14.1f}")
 
+    # 2. Distinctness of responses
+    sm = similarity_matrix(make, modalities, repetitions=args.reps)
+    print("\nResponse similarity, first 10 ms (1.0 = identical):")
+    print(" " * 10 + "".join(f"{m:>11}" for m in modalities))
+    for a in modalities:
+        print(f"{a:<10}" + "".join(f"{sm[a][b]:>11.3f}" for b in modalities))
+
+    # 3. Detection thresholds
+    print("\nDetection threshold (lowest intensity that produces a decision):")
+    grid = [0.2, 0.4, 0.6, 0.8, 1.0, 1.5, 2.0, 3.0]
+    for m in modalities:
+        t = detection_threshold(make, m, grid)
+        print(f"  {m:<10} {t if t is not None else 'none in grid'}")
+
+    # 4. Figures
     if args.figures:
-        from human_brain_agents.viz import activity_gif, activity_heatmap, graph_snapshot
+        from human_brain_agents.viz import activity_gif, activity_heatmap, graph_snapshot, similarity_heatmap
 
         out = Path(args.figures)
-        demo = build_hcp_brain()
-        demo.learning = True
-        for _ in range(3):
-            stimulate(demo)
-            demo.run(90)
+        demo = make()
+        for m in modalities:
+            present(demo, Stimulus(m), start=demo.tick)
+            demo.run(400)
         print("\nFigures:")
-        print("  " + str(activity_heatmap(demo, out / "activity_heatmap.png")))
+        print("  " + str(similarity_heatmap(sm, out / "similarity_heatmap.png")))
+        print("  " + str(activity_heatmap(demo, out / "activity_heatmap.png",
+                                         title="Visual, auditory, then tactile stimulus")))
         print("  " + str(graph_snapshot(demo, 0, 30, out / "graph_0_30ms.png")))
         print("  " + str(activity_gif(demo, out / "activity.gif", window=10, step=10)))
 
     if args.csv:
+        full = make()
+        run_protocol(full, [Stimulus(m) for m in modalities])
         with open(args.csv, "w", newline="") as f:
             w = csv.writer(f)
             w.writerow(["agent", "module", "tick"])
-            for name, agent in brain.agents.items():
+            for name, agent in full.agents.items():
                 for t in agent.spikes:
                     w.writerow([name, agent.module, t])
         print(f"Spike raster written to {args.csv}")

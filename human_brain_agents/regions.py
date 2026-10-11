@@ -6,7 +6,6 @@ Some modules have their own agent behaviour:
 
 * RelayAgent (thalamus): gates input, gain set by prefrontal attention.
 * MemoryAgent (hippocampus): keeps a decaying trace and replays it.
-* SalienceAgent (amygdala): each spike raises the arousal modulator.
 * ControlAgent (prefrontal): each spike raises the attention modulator.
 * MotorAgent (motor cortex): its spikes are the output (actions).
 * HomeostatAgent (hypothalamus, extra): sets brain-wide gain from energy.
@@ -45,14 +44,6 @@ class MemoryAgent(Agent):
     def on_tick(self, tick: int) -> float:
         self.trace *= 0.995
         return 0.02 * self.trace
-
-
-class SalienceAgent(Agent):
-    """Amygdala: each spike raises arousal, which the brain broadcasts."""
-
-    def on_fire(self, tick: int) -> None:
-        if self.brain is not None:
-            self.brain.raise_modulator("arousal", 0.02)
 
 
 class ControlAgent(Agent):
@@ -114,8 +105,6 @@ MODULES: Dict[str, Set[str]] = {
     "somatosensory": {"postcentral", "supramarginal"},
     "motor": {"precentral", "paracentral"},
     "memory": {"hippocampus", "entorhinal", "parahippocampal"},
-    "emotion": {"amygdala", "medialorbitofrontal", "lateralorbitofrontal",
-                "rostralanteriorcingulate", "insula"},
     "control": {"rostralmiddlefrontal", "caudalmiddlefrontal", "frontalpole",
                 "parsorbitalis", "parstriangularis", "parsopercularis",
                 "superiorfrontal"},
@@ -149,8 +138,6 @@ def make_agent(label: str, **kw) -> Agent:
         cls = RelayAgent
     elif region == "hippocampus":
         cls = MemoryAgent
-    elif region == "amygdala":
-        cls = SalienceAgent
     elif module == "control":
         cls = ControlAgent
     elif module == "motor":
@@ -171,7 +158,6 @@ MODULE_LEVEL: Dict[str, float] = {
     "thalamus": 1.0,
     "association": 2.0,
     "memory": 2.0,
-    "emotion": 3.0,
     "striatum": 3.0,
     "control": 4.0,
     "motor": 5.0,
@@ -262,3 +248,24 @@ class BrainstemAgent(Agent):
 def _count(spikes: list, start: int, end: int) -> int:
     """Number of spike times in [start, end). Spike lists are sorted."""
     return bisect.bisect_left(spikes, end) - bisect.bisect_left(spikes, start)
+
+
+# --- removed regions -------------------------------------------------------
+# The emotion circuit (amygdala, orbitofrontal cortex, insula, anterior
+# cingulate) is not part of this model. These regions are dropped when the
+# brain is built, along with their connections.
+REMOVED_REGIONS = {
+    "amygdala",
+    "medialorbitofrontal",
+    "lateralorbitofrontal",
+    "rostralanteriorcingulate",
+    "insula",
+}
+
+
+def is_removed(label: str) -> bool:
+    try:
+        _, region = parse_label(label)
+    except ValueError:
+        return False
+    return region in REMOVED_REGIONS

@@ -22,7 +22,6 @@ MODULE_COLORS: Dict[str, str] = {
     "somatosensory": "#59a14f",
     "motor": "#e15759",
     "memory": "#b07aa1",
-    "emotion": "#ff9da7",
     "control": "#f28e2b",
     "striatum": "#edc948",
     "thalamus": "#9c755f",
@@ -168,5 +167,29 @@ def activity_gif(brain: Brain, path: Path, *, window: int = 10, step: int = 10, 
     anim = animation.FuncAnimation(fig, update, frames=frames, blit=False)
     path.parent.mkdir(parents=True, exist_ok=True)
     anim.save(path, writer=animation.PillowWriter(fps=fps))
+    plt.close(fig)
+    return path
+
+
+def similarity_heatmap(matrix: Dict[str, Dict[str, float]], path: Path, title: str = "") -> Path:
+    """Heatmap of modality-to-modality response similarity (cosine, early window)."""
+    plt = _plt()
+    keys = list(matrix)
+    data = [[matrix[a][b] for b in keys] for a in keys]
+    fig, ax = plt.subplots(figsize=(5, 4.5))
+    im = ax.imshow(data, vmin=0, vmax=1, cmap="viridis")
+    ax.set_xticks(range(len(keys)))
+    ax.set_xticklabels(keys)
+    ax.set_yticks(range(len(keys)))
+    ax.set_yticklabels(keys)
+    for i in range(len(keys)):
+        for j in range(len(keys)):
+            ax.text(j, i, f"{data[i][j]:.2f}", ha="center", va="center",
+                    color="white" if data[i][j] < 0.6 else "black", fontsize=10)
+    fig.colorbar(im, ax=ax, label="cosine similarity")
+    ax.set_title(title or "Response similarity between senses")
+    fig.tight_layout()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(path, dpi=120)
     plt.close(fig)
     return path

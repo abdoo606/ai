@@ -10,6 +10,7 @@ from .regions import (
     BrainstemAgent,
     CerebellumAgent,
     HomeostatAgent,
+    is_removed,
     level_of,
     make_agent,
     module_of,
@@ -57,7 +58,10 @@ def build_hcp_brain(
     * Extras not in the connectome: cerebellum (motor calibration) and
       brainstem (activity guard), plus the hypothalamus (energy homeostasis).
     """
-    labels, sc = load_structural(data_dir)
+    all_labels, all_sc = load_structural(data_dir)
+    keep_idx = [i for i, l in enumerate(all_labels) if not is_removed(l)]
+    labels = [all_labels[i] for i in keep_idx]
+    sc = [[all_sc[i][j] for j in keep_idx] for i in keep_idx]
     brain = brain or Brain()
     for label in labels:
         brain.add_agent(make_agent(label))
@@ -78,6 +82,8 @@ def build_hcp_brain(
 
     if extras:
         add_extras(brain, labels)
+        from .stimuli import add_decision
+        add_decision(brain)
     return brain
 
 
