@@ -38,7 +38,11 @@ def create_app(assistant: Assistant | None = None) -> FastAPI:
     @app.get("/api/status")
     def status():
         model = settings.hf_model if settings.llm_mode == "huggingface-local" else None
-        return {"llm": settings.llm_mode, "model": model,
+        models = None
+        if settings.llm_mode == "local-ensemble":
+            models = {"intent": settings.hf_intent_model, "english": settings.hf_english_model,
+                      "arabic": settings.hf_arabic_model}
+        return {"llm": settings.llm_mode, "model": model, "models": models,
                 "topics": bot.tools.call("list_topics", {}),
                 "shell_enabled": settings.allow_shell}
 

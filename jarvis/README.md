@@ -11,7 +11,8 @@ It is standalone: the default needs no API key and no external model. Everything
 - **Fast recall**: SQLite FTS5/BM25, indexed graph edges, a 32 MiB page cache, WAL mode, and cached query expansions keep retrieval lightweight without an embedding server.
 - **Grounded answers**: local extractive answering cites every source, compares connected evidence, and does not invent unsupported text.
 - **Arabic retrieval**: Arabic diacritics, alef variants, and ya/alef-maqsura variants are normalized in the search index while original source text is preserved.
-- **Local open model (optional)**: Hugging Face `transformers` adds conversational reasoning and tool use without sending prompts to a service.
+- **Three local model brains (optional)**: a small multilingual intent model recovers meaning from incomplete, dialectal, or misspelled input; a dedicated Arabic-prompted model and an English model handle reasoning and replies. Only the needed language model loads for a request, and nothing is sent to a model service.
+- **Fast fuzzy fallback**: common Arabic/English commands tolerate filler words and spelling errors even when no model is installed.
 - **Web search and reading**: DuckDuckGo search, and readable text from any http(s) page.
 - **Files**: read, write and list files, **only inside the workspace** (`~/jarvis_workspace` by default). Paths that escape it are refused.
 - **Commands**: shell commands are **off by default**. Enable them with `JARVIS_ALLOW_SHELL=1`.
@@ -25,32 +26,39 @@ pip install -r jarvis/requirements.txt
 
 Python 3.10 or newer. SQLite with FTS5 is included in standard Python builds.
 
-### Optional: local Hugging Face brain
+### Optional: three-brain local ensemble
 
 ```bash
 pip install -r jarvis/requirements-huggingface.txt
 
-# One-time model download (no API key). This can be several GB.
-JARVIS_BACKEND=huggingface JARVIS_HF_ALLOW_DOWNLOAD=1 python -m jarvis "Hello"
+# One-time public model download; no account or API key. Requires several GB.
+python jarvis/scripts/install_models.py
 
-# Later runs can be forced to use only the cached/local model.
-JARVIS_BACKEND=huggingface python -m jarvis
+# All later inference uses jarvis/models/* locally.
+JARVIS_BACKEND=ensemble python -m jarvis
 ```
 
-For a fully controlled installation, download a compatible instruct model into
-`jarvis/models/<name>` and set `JARVIS_HF_MODEL` to that folder. Jarvis loads
-Transformers lazily and never downloads weights unless
-`JARVIS_HF_ALLOW_DOWNLOAD=1` is explicitly set.
+The installer selects `SmolLM2-1.7B-Instruct` for English,
+`Qwen2.5-1.5B-Instruct` for Arabic-capable reasoning, and
+`Qwen2.5-0.5B-Instruct` for fast multilingual intent detection. All are public
+Apache-2.0 models. They are separate so an ambiguous message is interpreted by
+the intent brain and then routed only to the matching Arabic or English brain.
+Use the installer flags to substitute other compatible local instruct models.
+The older single-model mode remains available as `JARVIS_BACKEND=huggingface`.
 
 ### Configuration (environment variables)
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `JARVIS_BACKEND` | `offline` | `offline` uses the built-in brain; `huggingface` runs an open model locally. There is no hosted/API backend. |
-| `JARVIS_HF_MODEL` | `jarvis/models/brain` | Local model folder. A Hub model ID is accepted only when the one-time download flag is enabled. |
-| `JARVIS_HF_ALLOW_DOWNLOAD` | `0` | Model downloads are blocked by default. Set `1` only for the initial model download. |
+| `JARVIS_BACKEND` | `offline` | `offline`, single local `huggingface`, or three-brain local `ensemble`. No hosted/API backend. |
+| `JARVIS_HF_ENGLISH_MODEL` | `jarvis/models/english` | English reasoning model folder. |
+| `JARVIS_HF_ARABIC_MODEL` | `jarvis/models/arabic` | Arabic reasoning model folder. |
+| `JARVIS_HF_INTENT_MODEL` | `jarvis/models/intent` | Fast multilingual intent model folder. |
+| `JARVIS_HF_MODEL` | `jarvis/models/brain` | Model folder for legacy single-model mode. |
+| `JARVIS_HF_ALLOW_DOWNLOAD` | `0` | Runtime model downloads are blocked by default. The installer performs the explicit one-time setup. |
 | `JARVIS_HF_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or a CUDA device index such as `0`. |
-| `JARVIS_HF_MAX_NEW_TOKENS` | `512` | Maximum generated tokens per local-model step. |
+| `JARVIS_HF_MAX_NEW_TOKENS` | `512` | Maximum tokens from Arabic/English reasoning brains. |
+| `JARVIS_HF_INTENT_MAX_NEW_TOKENS` | `192` | Maximum tokens from the intent brain. |
 | `JARVIS_HOME` | `jarvis/data` | Where the knowledge base is stored. Git-ignored. |
 | `JARVIS_WORKSPACE` | `~/jarvis_workspace` | The only folder the file tools can touch. |
 | `JARVIS_ALLOW_SHELL` | `0` | Set to `1` to let the assistant run shell commands in the workspace. |
@@ -93,7 +101,8 @@ chat with `rebuild connections` through the tool interface, or by calling the
 - `research.py`: autonomous curriculum generation, bounded multi-pass research, URL/content deduplication, subtopic discovery, and local archiving.
 - `web.py`: standard-library HTTP, HTML-to-text, and DuckDuckGo result parsing.
 - `tools.py`: tools with JSON schemas. Output is capped at 4000 characters. Errors are returned as text, not raised.
-- `llm.py`: the zero-dependency offline router and an optional lazy-loaded local Hugging Face Transformers brain with JSON tool calling. No hosted-model client exists.
+- `llm.py`: fuzzy zero-dependency intent routing, language detection, a lazy three-model local ensemble (intent + Arabic + English), and legacy single-model mode. No hosted-model client exists.
+- `scripts/install_models.py`: explicit one-time installer for the three public model snapshots and a local manifest.
 - `agent.py`: the assistant loop. It calls tools for up to 6 steps, then answers, and keeps the last 40 messages of history.
 - `server.py`: FastAPI. The UI uses relative URLs, so it works behind a preview proxy.
 

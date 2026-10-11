@@ -13,7 +13,8 @@ from jarvis import web
 from jarvis.agent import Assistant
 from jarvis.config import load_settings
 from jarvis.knowledge import KnowledgeBase, chunk_text, normalize_text
-from jarvis.llm import HuggingFaceTransformersLLM, LLMError, RuleBasedLLM, make_llm
+from jarvis.llm import (HuggingFaceTransformersLLM, LLMError, LocalModelEnsembleLLM,
+                        RuleBasedLLM, detect_language, make_llm)
 from jarvis.research import DeepResearcher, canonical_url, curriculum_queries, discover_subtopics
 from jarvis.tools import build_registry
 
@@ -347,6 +348,9 @@ def test_learn_topic_skips_failing_pages(kb, settings, fake_web, monkeypatch):
     ("learn quantum computing", ("learn_deep", {"topic": "quantum computing"})),
     ("تعلم الحوسبة الكمومية", ("learn_deep", {"topic": "الحوسبة الكمومية"})),
     ("اتعلم الفيزياء", ("learn_deep", {"topic": "الفيزياء"})),
+    ("بدي ياه يتعلم فيزيا", ("learn_deep", {"topic": "فيزيا"})),
+    ("لو سمحت اتعالم الفيزيا", ("learn_deep", {"topic": "الفيزيا"})),
+    ("plese serch quantum gravity", ("web_search", {"query": "quantum gravity"})),
     ("recall what is a qubit", ("recall", {"query": "what is a qubit"})),
     ("ماذا تعرف عن الكيوبت", ("recall", {"query": "الكيوبت"})),
     ("what time is it", ("get_time", {})),
@@ -465,6 +469,68 @@ def test_huggingface_backend_is_opt_in_local_and_lazy(tmp_path):
     model = make_llm(settings)
     assert isinstance(model, HuggingFaceTransformersLLM)
     assert model._generator is None  # importing Jarvis does not load a multi-GB model
+
+
+def test_three_model_ensemble_configuration_is_local_and_lazy(tmp_path):
+    settings = load_settings({
+        "JARVIS_HOME": str(tmp_path), "JARVIS_BACKEND": "ensemble",
+        "JARVIS_HF_ENGLISH_MODEL": str(tmp_path / "en"),
+        "JARVIS_HF_ARABIC_MODEL": str(tmp_path / "ar"),
+        "JARVIS_HF_INTENT_MODEL": str(tmp_path / "intent"),
+    })
+    model = make_llm(settings)
+    assert settings.llm_mode == "local-ensemble"
+    assert isinstance(model, LocalModelEnsembleLLM)
+    assert model.english.model.endswith("en") and model.english.purpose == "english"
+    assert model.arabic.model.endswith("ar") and model.arabic.purpose == "arabic"
+    assert model.intent.model.endswith("intent") and model.intent.purpose == "intent"
+    assert all(brain._generator is None for brain in (model.intent, model.english, model.arabic))
+
+
+def test_language_detection_routes_mixed_and_incomplete_text():
+    assert detect_language("مرحبا Jarvis بدي help") == "arabic"
+    assert detect_language("please explain physics") == "english"
+
+
+class StubBrain:
+    def __init__(self, reply):
+        self.reply = reply
+        self.calls = []
+
+    def chat(self, messages, tools=None):
+        self.calls.append((messages, tools))
+        return self.reply
+
+
+def test_ensemble_uses_fast_fuzzy_intent_before_loading_models():
+    intent = StubBrain({"content": "unused", "tool_calls": []})
+    english = StubBrain({"content": "unused", "tool_calls": []})
+    arabic = StubBrain({"content": "unused", "tool_calls": []})
+    model = LocalModelEnsembleLLM(intent, english, arabic)
+    reply = model.chat([{"role": "user", "content": "لو سمحت اتعالم الفيزيا"}], [])
+    assert reply["tool_calls"][0]["name"] == "learn_deep"
+    assert json.loads(reply["tool_calls"][0]["arguments"])["topic"] == "الفيزيا"
+    assert not intent.calls and not english.calls and not arabic.calls
+
+
+def test_ensemble_uses_intent_brain_then_matching_language_brain():
+    intent = StubBrain({"content": "conversation", "tool_calls": []})
+    english = StubBrain({"content": "hello", "tool_calls": []})
+    arabic = StubBrain({"content": "اهلا", "tool_calls": []})
+    model = LocalModelEnsembleLLM(intent, english, arabic)
+    reply = model.chat([{"role": "user", "content": "مرحبا شو فينا نعمل"}], [])
+    assert reply["content"] == "اهلا"
+    assert len(intent.calls) == 1 and len(arabic.calls) == 1 and not english.calls
+
+
+def test_ensemble_accepts_intent_model_tool_decision():
+    decision = {"content": None, "tool_calls": [{"id": "i", "name": "recall", "arguments": "{}"}]}
+    intent = StubBrain(decision)
+    english = StubBrain({"content": "unused", "tool_calls": []})
+    arabic = StubBrain({"content": "unused", "tool_calls": []})
+    model = LocalModelEnsembleLLM(intent, english, arabic)
+    assert model.chat([{"role": "user", "content": "find my old thing"}], [])["tool_calls"]
+    assert not english.calls and not arabic.calls
 
 
 def test_huggingface_reply_parser_supports_tool_calls_and_plain_text():

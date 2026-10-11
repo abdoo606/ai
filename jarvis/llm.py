@@ -1,16 +1,18 @@
 """Language-model backends for Jarvis.
 
-Two fully local backends share ``chat(messages, tools) -> reply``:
+All backends are local and share ``chat(messages, tools) -> reply``:
 
-* ``RuleBasedLLM`` is the zero-dependency, always-offline default.
-* ``HuggingFaceTransformersLLM`` runs an open model locally through the
-  Hugging Face Transformers library. It is lazy-loaded and needs no API key.
+* ``RuleBasedLLM`` is the fast zero-dependency default with fuzzy commands.
+* ``HuggingFaceTransformersLLM`` runs one open model locally.
+* ``LocalModelEnsembleLLM`` combines a multilingual intent model with separate
+  Arabic and English reasoning models. Every model is lazy-loaded; no API key.
 """
 
 from __future__ import annotations
 
 import json
 import re
+from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Protocol
 
 from .config import Settings
@@ -35,11 +37,12 @@ class HuggingFaceTransformersLLM:
     """
 
     def __init__(self, model: str, allow_download: bool = False, device: str = "auto",
-                 max_new_tokens: int = 512) -> None:
+                 max_new_tokens: int = 512, purpose: str = "general") -> None:
         self.model = model
         self.allow_download = allow_download
         self.device = device
         self.max_new_tokens = max_new_tokens
+        self.purpose = purpose
         self._generator = None
 
     def _load(self):
@@ -72,14 +75,28 @@ class HuggingFaceTransformersLLM:
             raise LLMError(f"could not load Hugging Face model '{self.model}': {error}. {hint}") from error
         return self._generator
 
-    @staticmethod
-    def _system_prompt(tools: Optional[List[dict]]) -> str:
+    def _system_prompt(self, tools: Optional[List[dict]]) -> str:
         schemas = json.dumps(tools or [], ensure_ascii=False, separators=(",", ":"))
+        if self.purpose == "intent":
+            role = (
+                "You are Jarvis's multilingual intent brain. Infer what the user means even when Arabic or "
+                "English is dialectal, misspelled, abbreviated, missing punctuation, or incomplete. Prefer a "
+                "tool call whenever intent and arguments can be recovered. Never invent a missing destructive "
+                "argument; ask one short clarification instead."
+            )
+        elif self.purpose == "arabic":
+            role = (
+                "You are Jarvis's Arabic reasoning brain. Understand Modern Standard Arabic and Levantine "
+                "dialect, including informal and imperfect spelling. Answer naturally in the user's dialect."
+            )
+        elif self.purpose == "english":
+            role = "You are Jarvis's English reasoning brain. Answer in clear natural English."
+        else:
+            role = "You are Jarvis, a concise local personal assistant. Reply in the user's language."
         return (
-            "You are Jarvis, a concise local personal assistant. Reply in the user's language. "
-            "For complex questions, reason internally in steps: retrieve evidence, inspect concept links, "
-            "compare sources and contradictions, then provide only the conclusion and supporting evidence. "
-            "Never expose private chain-of-thought or mistake co-occurrence for causation. "
+            role + " For complex questions, reason internally in steps: retrieve evidence, inspect concept "
+            "links, compare sources and contradictions, then provide only the conclusion and supporting "
+            "evidence. Never expose private chain-of-thought or mistake co-occurrence for causation. "
             "You may call one or more tools. Return exactly one JSON object and no markdown: "
             '{"content":"answer or null","tool_calls":['
             '{"id":"call-1","name":"tool_name","arguments":{"arg":"value"}}]}. '
@@ -150,6 +167,62 @@ class HuggingFaceTransformersLLM:
         return self._parse_reply(generated)
 
 
+def detect_language(text: str) -> str:
+    """Return ``arabic`` or ``english`` for model routing, including mixed text."""
+    arabic = len(re.findall(r"[\u0600-\u06ff]", text))
+    latin = len(re.findall(r"[A-Za-z]", text))
+    return "arabic" if arabic and arabic >= latin * 0.35 else "english"
+
+
+class LocalModelEnsembleLLM:
+    """Three-brain local ensemble: intent understanding + Arabic/English response.
+
+    A deterministic fuzzy router handles obvious commands first for speed. The
+    intent model is used only for ambiguous/incomplete input, then exactly one
+    language model handles reasoning and response. All models are lazy-loaded.
+    """
+
+    def __init__(self, intent: HuggingFaceTransformersLLM,
+                 english: HuggingFaceTransformersLLM,
+                 arabic: HuggingFaceTransformersLLM) -> None:
+        self.intent = intent
+        self.english = english
+        self.arabic = arabic
+
+    @staticmethod
+    def _latest_user(messages: List[dict]) -> str:
+        return next((str(message.get("content") or "") for message in reversed(messages)
+                     if message.get("role") == "user"), "")
+
+    def _response_model(self, messages: List[dict]) -> HuggingFaceTransformersLLM:
+        return self.arabic if detect_language(self._latest_user(messages)) == "arabic" else self.english
+
+    def chat(self, messages: List[dict], tools: Optional[List[dict]] = None) -> Dict[str, Any]:
+        # A tool just returned: let the matching language brain synthesize the evidence.
+        if messages and messages[-1].get("role") == "tool":
+            return self._response_model(messages).chat(messages, tools)
+
+        text = self._latest_user(messages)
+        deterministic = RuleBasedLLM._route(text)
+        if deterministic is not None:
+            name, arguments = deterministic
+            return {"content": None, "tool_calls": [{
+                "id": f"fast-{abs(hash((name, json.dumps(arguments, sort_keys=True, ensure_ascii=False))))}",
+                "name": name,
+                "arguments": json.dumps(arguments, ensure_ascii=False),
+            }]}
+
+        # Ambiguous text goes through the small intent model. If its local files
+        # are unavailable, the language model still gets a chance to understand it.
+        try:
+            decision = self.intent.chat(messages, tools)
+            if decision.get("tool_calls"):
+                return decision
+        except LLMError:
+            pass
+        return self._response_model(messages).chat(messages, tools)
+
+
 class RuleBasedLLM:
     """Offline router with useful source-grounded memory answers."""
 
@@ -169,12 +242,51 @@ class RuleBasedLLM:
         }]}
 
     @staticmethod
-    def _route(text: str) -> Optional[tuple]:
+    def _clean_command(text: str) -> str:
         low = normalize_text(text.strip())
+        low = re.sub(r"[،,:;!]+", " ", low)
+        low = re.sub(r"\s+", " ", low).strip()
+        fillers = re.compile(
+            r"^(?:لو سمحت|من فضلك|بدي ياه|بدي ياك|بديك|بدي|ممكن|فيني اطلب|"
+            r"روح|يلا|please|can you|could you|would you|i want you to)\s+"
+        )
+        previous = None
+        while low != previous:
+            previous = low
+            low = fillers.sub("", low).strip()
+        return low
+
+    @staticmethod
+    def _fuzzy_command(low: str) -> Optional[tuple]:
+        """Recover common command intent from misspelled or conversational text."""
+        aliases = {
+            "learn_deep": ("topic", {"learn", "study", "تعلم", "اتعلم", "يتعلم", "ادرس", "دروس"}),
+            "recall": ("query", {"recall", "تذكر", "استرجع", "جاوب"}),
+            "summarize_topic": ("topic", {"summarize", "لخص", "تلخيص", "ملخص"}),
+            "web_search": ("query", {"search", "google", "ابحث", "دور"}),
+            "connect_ideas": ("query", {"connect", "link", "اربط", "علاقه"}),
+        }
+        words = low.split()
+        for index, word in enumerate(words[:-1]):
+            best_tool, best_argument, best_score = None, None, 0.0
+            for tool, (argument, commands) in aliases.items():
+                for command in commands:
+                    score = SequenceMatcher(None, word, command).ratio()
+                    if score > best_score:
+                        best_tool, best_argument, best_score = tool, argument, score
+            if best_score >= 0.72:
+                value = " ".join(words[index + 1:]).strip()
+                if value:
+                    return best_tool, {best_argument: value}
+        return None
+
+    @staticmethod
+    def _route(text: str) -> Optional[tuple]:
+        low = RuleBasedLLM._clean_command(text)
         if not low:
             return None
         patterns = [
-            (r"^(learn|study|تعلم|اتعلم|ادرس)\s+(.+)$", "learn_deep", "topic"),
+            (r"^(learn|study|تعلم|اتعلم|يتعلم|ادرس)\s+(.+)$", "learn_deep", "topic"),
             (r"^(quick learn|تعلم بسرعه)\s+(.+)$", "learn_topic", "topic"),
             (r"^(recall|search memory|استرجع|ابحث في معلوماتي)\s+(.+)$", "recall", "query"),
             (r"^(what do you know about|ماذا تعرف عن|ماذا تعرف)\s+(.+)$", "recall", "query"),
@@ -194,10 +306,13 @@ class RuleBasedLLM:
             return "rebuild_connections", {}
         if re.search(r"\b(time|date)\b", low) or any(word in low for word in ("الوقت", "الساعة", "الساعه", "التاريخ")):
             return "get_time", {}
-        # A direct question is treated as a memory question, making offline mode
-        # useful beyond a rigid command vocabulary.
+        # Question punctuation is stronger evidence than a fuzzy command match
+        # (for example Arabic "تعمل" must not be mistaken for "تعلم").
         if text.rstrip().endswith(("?", "؟")):
             return "recall", {"query": text.rstrip("?؟ ")}
+        fuzzy = RuleBasedLLM._fuzzy_command(low)
+        if fuzzy is not None:
+            return fuzzy
         return None
 
     @staticmethod
@@ -219,11 +334,24 @@ class RuleBasedLLM:
 
 
 def make_llm(settings: Settings) -> LLM:
+    common = {"allow_download": settings.hf_allow_download, "device": settings.hf_device}
+    if settings.llm_mode == "local-ensemble":
+        return LocalModelEnsembleLLM(
+            intent=HuggingFaceTransformersLLM(
+                settings.hf_intent_model, max_new_tokens=settings.hf_intent_max_new_tokens,
+                purpose="intent", **common,
+            ),
+            english=HuggingFaceTransformersLLM(
+                settings.hf_english_model, max_new_tokens=settings.hf_max_new_tokens,
+                purpose="english", **common,
+            ),
+            arabic=HuggingFaceTransformersLLM(
+                settings.hf_arabic_model, max_new_tokens=settings.hf_max_new_tokens,
+                purpose="arabic", **common,
+            ),
+        )
     if settings.llm_mode == "huggingface-local":
         return HuggingFaceTransformersLLM(
-            settings.hf_model,
-            allow_download=settings.hf_allow_download,
-            device=settings.hf_device,
-            max_new_tokens=settings.hf_max_new_tokens,
+            settings.hf_model, max_new_tokens=settings.hf_max_new_tokens, **common,
         )
     return RuleBasedLLM()
