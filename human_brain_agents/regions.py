@@ -1,46 +1,41 @@
-"""Specialised region-agents and a simplified human brain wiring.
+"""Region-agent types and the functional module of each region.
 
-The wiring below is a hand-written, simplified map of major pathways
-(sensory -> thalamus -> cortex -> action loop, with memory, emotion,
-control and energy homeostasis). It is a starting point, not a measured
-connectome. Replace the ``HUMAN_PATHWAYS`` table with real data later.
+Each Desikan-Killiany / subcortical region of the HCP connectome becomes one
+agent. Its module (what it is responsible for) comes from its anatomical name.
+Some modules have their own agent behaviour:
+
+* RelayAgent (thalamus): gates input, gain set by prefrontal attention.
+* MemoryAgent (hippocampus): keeps a decaying trace and replays it.
+* SalienceAgent (amygdala): each spike raises the arousal modulator.
+* ControlAgent (prefrontal): each spike raises the attention modulator.
+* MotorAgent (motor cortex): its spikes are the output (actions).
+* HomeostatAgent (hypothalamus, extra): sets brain-wide gain from energy.
+* Everything else is a generic cortical integrator.
 """
 
 from __future__ import annotations
 
-from typing import Optional
+from typing import Dict, Set, Tuple
 
-from .core import Agent, Brain, Message
-
-
-class Sensory(Agent):
-    """Primary sensory cortex: encodes external stimuli."""
+from .core import Agent, Message
 
 
-class Thalamus(Agent):
-    """Relay and gate. Attention from prefrontal cortex raises its gain."""
-
-    def __init__(self, name: str, **kw) -> None:
-        super().__init__(name=name, **kw)
-        self.gain = 1.0
+class RelayAgent(Agent):
+    """Thalamic relay: input is amplified when attention is high."""
 
     def on_input(self, msg: Message, tick: int) -> float:
-        if msg.kind == "attention":
-            self.gain = max(0.2, min(2.0, self.gain + msg.strength))
-            return 0.0
-        return super().on_input(msg, tick) * self.gain
+        base = super().on_input(msg, tick)
+        if self.brain is None:
+            return base
+        return base * (1.0 + self.brain.modulators["attention"])
 
 
-class AssociationCortex(Agent):
-    """Integrates information from many sources."""
-
-
-class Hippocampus(Agent):
-    """Memory: keeps a decaying trace of recent strong activity and replays it."""
+class MemoryAgent(Agent):
+    """Hippocampal memory: a decaying trace of recent activity, replayed as a weak drive."""
 
     def __init__(self, name: str, **kw) -> None:
-        super().__init__(name=name, **kw)
-        self.trace = 0.0
+        super().__init__(name, **kw)
+        self.trace: float = 0.0
 
     def on_input(self, msg: Message, tick: int) -> float:
         self.trace = min(1.0, self.trace + 0.2)
@@ -48,78 +43,117 @@ class Hippocampus(Agent):
 
     def on_tick(self, tick: int) -> float:
         self.trace *= 0.995
-        # Replay: a weak drive proportional to the remembered trace
         return 0.02 * self.trace
 
 
-class Amygdala(Agent):
-    """Salience detector (placeholder): relays input to prefrontal cortex.
-    Planned: boost salience for strong or threatening input."""
+class SalienceAgent(Agent):
+    """Amygdala: each spike raises arousal, which the brain broadcasts."""
+
+    def on_fire(self, tick: int) -> None:
+        if self.brain is not None:
+            self.brain.raise_modulator("arousal", 0.1)
 
 
-class BasalGanglia(Agent):
-    """Action selection: strongest candidate wins, the rest are inhibited via wiring."""
+class ControlAgent(Agent):
+    """Prefrontal control: each spike raises the attention modulator."""
+
+    def on_fire(self, tick: int) -> None:
+        if self.brain is not None:
+            self.brain.raise_modulator("attention", 0.05)
 
 
-class MotorCortex(Agent):
-    """Produces actions. Spikes here are the brain's output."""
+class MotorAgent(Agent):
+    """Motor cortex: its spikes are the brain's output (actions)."""
 
-    def __init__(self, name: str, **kw) -> None:
-        super().__init__(name=name, **kw)
-        self.actions: list[int] = []
-
-    def step(self, current: float, tick: int) -> bool:
-        fired = super().step(current, tick)
-        if fired:
-            self.actions.append(tick)
-        return fired
+    @property
+    def actions(self) -> list:
+        return self.spikes
 
 
-class Cerebellum(Agent):
-    """Error correction: reduces motor gain when it sees error signals."""
+class HomeostatAgent(Agent):
+    """Hypothalamus (simplified): sets the brain-wide gain from its energy level.
+
+    When the average energy falls below ``low``, all agents receive less input,
+    so the brain spends less. The gain returns to 1 when energy recovers.
+    """
+
+    def __init__(self, name: str, *, low: float = 0.3, high: float = 0.6, **kw) -> None:
+        super().__init__(name, **kw)
+        self.low = low
+        self.high = high
+
+    def on_tick(self, tick: int) -> float:
+        if self.brain is not None:
+            frac = self.brain.mean_energy_fraction()
+            if frac >= self.high:
+                g = 1.0
+            elif frac <= self.low:
+                g = 0.2
+            else:
+                g = 0.2 + 0.8 * (frac - self.low) / (self.high - self.low)
+            self.brain.global_gain = g
+        return 0.0
 
 
-class PrefrontalCortex(Agent):
-    """Goals and control: sends attention signals to the thalamus."""
+# --- anatomical name -> functional module ---------------------------------
+# HCP labels use Desikan-Killiany names for cortex and short codes for subcortex.
+SUBCORTICAL_NAMES: Dict[str, str] = {
+    "accumb": "accumbens",
+    "amyg": "amygdala",
+    "caud": "caudate",
+    "hippo": "hippocampus",
+    "pal": "pallidum",
+    "put": "putamen",
+    "thal": "thalamus",
+}
+
+MODULES: Dict[str, Set[str]] = {
+    "visual": {"lateraloccipital", "lingual", "cuneus", "pericalcarine"},
+    "auditory": {"superiortemporal", "transversetemporal"},
+    "somatosensory": {"postcentral", "supramarginal"},
+    "motor": {"precentral", "paracentral"},
+    "memory": {"hippocampus", "entorhinal", "parahippocampal"},
+    "emotion": {"amygdala", "medialorbitofrontal", "lateralorbitofrontal",
+                "rostralanteriorcingulate", "insula"},
+    "control": {"rostralmiddlefrontal", "caudalmiddlefrontal", "frontalpole",
+                "parsorbitalis", "parstriangularis", "parsopercularis",
+                "superiorfrontal"},
+    "striatum": {"caudate", "putamen", "pallidum", "accumbens"},
+    "thalamus": {"thalamus"},
+}
+DEFAULT_MODULE = "association"
 
 
-class Hypothalamus(Agent):
-    """Energy homeostasis (placeholder). Its energy budget is tracked, but it
-    is not wired to any region yet. Planned: broadcast 'inhibit' when low."""
+def parse_label(label: str) -> Tuple[str, str]:
+    """Return (hemisphere, region_name) for 'L_precentral' or 'Lcaud' style labels."""
+    if label[:2] in ("L_", "R_"):
+        return label[0], label[2:]
+    if label[:1] in ("L", "R") and label[1:] in SUBCORTICAL_NAMES:
+        return label[0], SUBCORTICAL_NAMES[label[1:]]
+    raise ValueError(f"unrecognised region label: {label!r}")
 
 
-# (src, dst, weight, delay in ms). Positive = excitatory, negative = inhibitory.
-HUMAN_PATHWAYS = [
-    ("sensory", "thalamus", 1.2, 2),
-    ("thalamus", "association", 1.2, 3),
-    ("thalamus", "amygdala", 0.4, 2),
-    ("association", "hippocampus", 0.4, 3),
-    ("hippocampus", "association", 0.3, 3),
-    ("association", "prefrontal", 0.5, 4),
-    ("prefrontal", "thalamus", 0.3, 4),          # top-down attention
-    ("amygdala", "prefrontal", 0.5, 3),
-    ("association", "basal_ganglia", 1.2, 3),
-    ("basal_ganglia", "motor", 1.2, 3),
-    ("motor", "cerebellum", 0.3, 2),
-    ("cerebellum", "motor", -0.4, 2),            # error correction (inhibitory)
-    ("basal_ganglia", "association", -0.2, 3),   # lateral inhibition / competition
-]
+def module_of(region_name: str) -> str:
+    for module, names in MODULES.items():
+        if region_name in names:
+            return module
+    return DEFAULT_MODULE
 
 
-def build_default_brain(seed: Optional[int] = None) -> Brain:
-    """Create the default region-agent brain. ``seed`` is reserved for noise."""
-    brain = Brain()
-    brain.add_agent(Sensory("sensory"))
-    brain.add_agent(Thalamus("thalamus"))
-    brain.add_agent(AssociationCortex("association"))
-    brain.add_agent(Hippocampus("hippocampus"))
-    brain.add_agent(Amygdala("amygdala"))
-    brain.add_agent(PrefrontalCortex("prefrontal"))
-    brain.add_agent(BasalGanglia("basal_ganglia"))
-    brain.add_agent(MotorCortex("motor"))
-    brain.add_agent(Cerebellum("cerebellum"))
-    brain.add_agent(Hypothalamus("hypothalamus", energy_budget=500.0))
-
-    for src, dst, w, d in HUMAN_PATHWAYS:
-        brain.connect(src, dst, w, d)
-    return brain
+def make_agent(label: str, **kw) -> Agent:
+    """Create the right agent type for an HCP region label."""
+    _, region = parse_label(label)
+    module = module_of(region)
+    if module == "thalamus":
+        cls = RelayAgent
+    elif region == "hippocampus":
+        cls = MemoryAgent
+    elif region == "amygdala":
+        cls = SalienceAgent
+    elif module == "control":
+        cls = ControlAgent
+    elif module == "motor":
+        cls = MotorAgent
+    else:
+        cls = Agent
+    return cls(label, role=region, module=module, **kw)
