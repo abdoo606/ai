@@ -1,19 +1,31 @@
-# Local Zehnora Assistant
+# Zehnora — Private Local Intelligence Asset
 
-The actively developed product in this repository is [`zehnora/`](zehnora/): an
-API-free local personal assistant with Arabic/English model routing, autonomous
-research, source-grounded memory, concept-graph retrieval, and optional
-multi-pass local reasoning.
+Zehnora (`ذهنورا`) is an API-free Arabic/English local intelligence system with
+autonomous research, source-grounded memory, concept-graph retrieval, tool use,
+and optional multi-pass local reasoning.
 
-- [Zehnora setup and user guide](zehnora/README.md)
+This repository now contains **only the Zehnora product and its transaction
+materials**. The unrelated connectome/fruit-fly research project and its data,
+notebooks, environments, scripts, outputs, and license were removed from the
+current tree before preparing the asset for a potential whole-project sale.
+
+## Technical entry points
+
+- [Setup and architecture](zehnora/README.md)
 - [Security policy](zehnora/SECURITY.md)
-- [Commercial release checklist](zehnora/RELEASE_CHECKLIST.md)
-- [Developer/agent handoff](zehnora/README_AI.md)
-- [Commercial launch plan](sales/LAUNCH_PLAN.md)
-- [Preliminary brand-clearance record](sales/BRAND_CLEARANCE.md)
-- [Product brief](sales/PRODUCT_BRIEF.md) and [pricing hypothesis](sales/PRICING_DRAFT.md)
+- [Engineering release checklist](zehnora/RELEASE_CHECKLIST.md)
+- [Developer handoff](zehnora/README_AI.md)
 
-The repository also preserves the imported Drosophila connectome model at the
-root. Its original documentation is in [`Readme.md`](Readme.md). The two
-projects are intentionally isolated; Zehnora does not alter or depend on the
-Drosophila simulation.
+## Transaction room
+
+- [Asset sale overview](sales/ASSET_SALE_OVERVIEW.md)
+- [Asset inventory](sales/ASSET_INVENTORY.md)
+- [Buyer due-diligence index](sales/DUE_DILIGENCE_INDEX.md)
+- [Handover checklist](sales/HANDOVER_CHECKLIST.md)
+- [Preliminary brand screening](sales/BRAND_CLEARANCE.md)
+- [Draft IP assignment term sheet](sales/IP_ASSIGNMENT_TERM_SHEET_DRAFT.md)
+
+The legal documents are structured diligence drafts, not legal advice or a
+substitute for buyer/seller counsel. No payment should be accepted until title,
+license history, brand clearance, transaction documents, tax treatment, and
+transfer mechanics are approved.

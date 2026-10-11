@@ -4,9 +4,7 @@ Read this first. It tells you what this project is, what state it is in, what th
 
 ## 1. What this is
 
-Zehnora (`ذهنورا`) is a private, API-free Arabic/English personal research assistant. It lives in `zehnora/` in the repo `abdoo606/ai` (branch `arena/a202685b-ai`). The working name replaced the earlier fictional-assistant brand to reduce obvious trademark risk; it still requires formal clearance before sale. The repo is a fork of an original Drosophila whole-brain model. **Do not modify the Drosophila files at the repo root** (`model.py`, `utils.py`, `example.ipynb`, `figures.ipynb`, `results/`, `scripts/`, `Readme.md`, `environment*.yml`). All new work goes in its own directory.
-
-Sibling project: `human_brain_agents/`, a spiking-network prototype of a human-like sensorimotor decision loop (auditory, visual, tactile stimuli to motor command, reaction times, noise robustness, reward learning). It is paused. Its code and tests are already committed (39 tests pass). Do not resume it unless the user asks.
+Zehnora (`ذهنورا`) is a private, API-free Arabic/English personal research assistant in the repo `abdoo606/ai` (branch `arena/a202685b-ai`). The working name replaced the earlier fictional-assistant brand to reduce obvious trademark risk; it still requires formal clearance before transfer. The current tree contains Zehnora and its transaction materials only. The unrelated Drosophila/connectome code, data, notebooks, environments, and outputs were removed at the owner's direction, although they remain visible in historical Git revisions.
 
 ## 2. The user's requirements (verbatim intent)
 
@@ -21,7 +19,9 @@ Sibling project: `human_brain_agents/`, a spiking-network prototype of a human-l
 
 ## 3. Current state (as of this handoff)
 
-Restored onto `arena/a202685b-ai` from the earlier Zehnora work and actively developed here. The default is standalone. The strongest optional mode is `ZEHNORA_BACKEND=powerful`: intent → senior reasoner/tool use → adversarial critic → Arabic/English revision. Logical roles share one strong physical model pipeline in memory. All load lazily and runtime downloads are disabled by default.
+The current transaction strategy is a **one-time assignment/sale of the entire Zehnora asset**, not subscriptions, seats, retail tiers, or individual licenses. The repository includes a buyer diligence room under `sales/`; version 0.7.0 uses proprietary current-revision metadata with an explicit warning that earlier public MIT grants and public Git history cannot be revoked. Counsel must review title, historical licensing, contributors, third-party/model terms, brand, tax, security, and transfer documents before closing.
+
+The runtime default is standalone. The strongest optional mode is `ZEHNORA_BACKEND=powerful`: intent → senior reasoner/tool use → adversarial critic → Arabic/English revision. Logical roles share one strong physical model pipeline in memory. All load lazily and runtime downloads are disabled by default.
 
 Working:
 - `config.py`: local-only settings for intent, reasoner, critic, Arabic writer, and English writer paths plus 1–3 verification rounds. `powerful` activates deliberation; roles share `zehnora/models/reasoning` by default. There are no API credentials or hosted-model settings.
@@ -34,7 +34,8 @@ Working:
 - `server.py`: hardened FastAPI boundary with optional constant-time bearer/header authentication, failed-auth throttling, per-client expensive-route rate limiting, bounded Pydantic inputs, health endpoint, no-store/security headers, and routes: `GET /`, `GET /api/status`, `POST /api/chat`, `POST /api/reset`, `POST /api/learn`, `GET /api/recall?q=`. Relative URLs in the UI. Run with `uvicorn zehnora.server:get_app --factory --host 0.0.0.0 --port 8000`.
 - `web/index.html`: chat, learn panel, recall panel, mic and speaker buttons.
 - `cli.py` and `__main__.py`: terminal REPL. Commands: `exit`, `reset`.
-- `tests/test_zehnora.py` plus `test_server.py`: 75 offline tests (chunking, FTS, parsing, file confinement, tool errors, intents, agent loop, end-to-end learn then recall). Run with `pytest -q zehnora/tests`. They use fixtures and scripted models, with no network.
+- `tests/test_zehnora.py` plus `test_server.py`: 76 offline tests (including deterministic source-bundle coverage, chunking, FTS, parsing, file confinement, tool errors, intents, agent loop, and end-to-end learn then recall). Run with `pytest -q zehnora/tests`. They use fixtures and scripted models, with no network.
+- `scripts/build_asset_bundle.py`: builds a deterministic, source-only buyer archive and SHA-256 file. It excludes Git metadata/history, model weights, runtime databases, credentials, caches, and generated artifacts. This archive is a technical delivery aid, not evidence of title or legal clearance.
 
 Known gaps and bugs:
 - The default offline brain is not generative, but now answers direct questions extractively, summarizes learned topics, lists sources, and emits inline citations. The optional Hugging Face backend provides generative local reasoning.
@@ -48,7 +49,7 @@ Known gaps and bugs:
 ## 4. Where we are heading (priority order)
 
 1. **Continue improving autonomous deep learning and grounded offline answers.** Graph expansion, reciprocal-rank fusion, MMR sentence selection, summaries, source listing, citations, and Arabic normalization are implemented. Next add contradiction detection and learning-by-date queries.
-2. **Complete commercial QA.** Packaging, multi-version CI, API security tests, SSRF controls, SECURITY.md, and a release checklist exist. Still required: real-model/hardware benchmarks, dependency/SBOM scanning, OS sandboxing, independent penetration testing, signed installers, and legal/privacy/trademark review.
+2. **Complete whole-asset transaction readiness.** Packaging, multi-version CI, API security tests, SSRF controls, SECURITY.md, deterministic clean-source bundling, and a release checklist exist. Still required: seller/title and contributor evidence, historical-license counsel review, third-party/model license matrix, real-model/hardware benchmarks, an SBOM, OS sandboxing, independent penetration testing, signed delivery checksums, brand clearance, definitive assignment documents, tax advice, and buyer acceptance.
 3. **Verify live web search and learning** when network access allows it (DuckDuckGo HTML, then a fallback engine if it fails). Add a retry and a rate limit.
 4. **Desktop app**: a small native-feeling window (for example pywebview wrapping the existing FastAPI server, or a Tkinter shell), plus a global hotkey. Keep the same API. Do not duplicate logic.
 5. **Live voice on desktop**: Python speech input and output with packages from PyPI only (for example `SpeechRecognition` with an offline engine, `pyttsx3`). Check that the required model files are not downloaded from hosts outside the allowlist.
@@ -59,7 +60,9 @@ Known gaps and bugs:
 
 - Work only on branch `arena/a202685b-ai`. Push only to it. Never create or switch branches.
 - Never commit or request secrets. The user sets environment variables themselves.
-- Keep `zehnora/data/` and `~/zehnora_workspace` out of Git (`zehnora/data/` is in `.gitignore`).
+- Keep `zehnora/data/`, model weights, buyer-confidential records, credentials, generated sale bundles, and `~/zehnora_workspace` out of Git.
+- Do not reintroduce unrelated connectome/fruit-fly materials into the current tree.
+- Do not describe this as a subscription, seat license, retail tier, paid beta, or sale of perfect exclusivity. The intended transaction is one whole-asset assignment, subject to counsel-reviewed historical-license disclosures.
 - Run `pytest -q zehnora/tests` before every commit. It must pass.
 - After changing server code, restart the uvicorn process (it does not reload automatically).
 - Keep every intelligence path local. Do not reintroduce hosted-model or paid API clients, even as opt-in options.
@@ -81,6 +84,9 @@ Known gaps and bugs:
 | `server.py` | authenticated/rate-limited FastAPI app, health/status routes |
 | `cli.py`, `__main__.py` | terminal mode |
 | `scripts/install_models.py` | one-time compact/balanced/powerful/max/frontier local model installer |
+| `scripts/build_asset_bundle.py` | deterministic source-only buyer archive and checksums |
+| `../sales/` | transaction perimeter, diligence, draft terms, and handover room |
+| `../THIRD_PARTY_NOTICES.md` | dependency/model/content and historical-license diligence map |
 | `web/index.html` | web UI |
 | `tests/` | offline unit, security, API, migration, orchestration tests |
 | `SECURITY.md`, `RELEASE_CHECKLIST.md` | security and commercial-release gates |
@@ -94,4 +100,5 @@ Known gaps and bugs:
 - On 2026-10-11 the product was fully rebranded to the coined working name Zehnora (`ذهنورا`). Exact-name GitHub search returned no repository, but `sales/BRAND_CLEARANCE.md` explicitly blocks paid launch pending formal trademark/domain/common-law clearance.
 - Brain choice: an LLM-style tool-using agent with a knowledge base, not the spiking model. Reason: the spiking model cannot serve as an assistant core.
 - The user rejected all API-key/hosted-model options. They were removed completely. Runtime intelligence must remain on-device.
-- The brain project was paused by the user. Its emotion regions (amygdala, orbitofrontal, insula, anterior cingulate) were removed on purpose. Do not add emotion back.
+- On 2026-10-11 the user rejected retail/per-user licensing and requested one serious sale of the entire AI asset. Transaction-room documents and a clean-source delivery builder were added for that strategy.
+- On 2026-10-11 the user directed removal of the unrelated fruit-fly/Drosophila project. It is absent from the current tree but remains in historical commits; that history and possible prior MIT grants must be disclosed rather than concealed.

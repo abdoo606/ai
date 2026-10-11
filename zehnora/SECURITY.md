@@ -34,5 +34,5 @@ real credentials or private user data.
 Local models can be prompt-injected by untrusted web pages. Tool boundaries,
 source citations, workspace confinement, command allowlisting, and destructive
 action confirmation reduce risk but do not make arbitrary autonomous execution
-safe. Keep command execution disabled in consumer builds unless the product has
+safe. Keep command execution disabled in transferred or deployed builds unless the product has
 additional OS-level sandboxing and explicit per-action confirmation.

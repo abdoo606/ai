@@ -5,4 +5,4 @@ machine through Hugging Face Transformers; hosted-model clients are not part of
 this package.
 """
 
-__version__ = "0.6.0"
+__version__ = "0.7.0"

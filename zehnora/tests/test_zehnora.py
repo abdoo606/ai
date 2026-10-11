@@ -5,6 +5,7 @@ Run: pytest -q zehnora/tests
 
 import json
 import sqlite3
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,7 @@ from zehnora.llm import (
     make_llm,
 )
 from zehnora.research import DeepResearcher, canonical_url, curriculum_queries, discover_subtopics
+from zehnora.scripts.build_asset_bundle import build_bundle, source_files
 from zehnora.tools import build_registry
 
 # ---------- fixtures -------------------------------------------------------
@@ -64,6 +66,24 @@ def fake_web(monkeypatch):
 
     monkeypatch.setattr(web, "fetch_text", fetch)
     return pages
+
+
+# ---------- source asset bundle -------------------------------------------
+
+def test_asset_bundle_is_source_only_deterministic_and_excludes_removed_project(tmp_path):
+    tracked = {path.relative_to(Path(__file__).resolve().parents[2]).as_posix() for path in source_files()}
+    assert "zehnora/agent.py" in tracked and "sales/ASSET_INVENTORY.md" in tracked
+    assert not {"model.py", "Readme.md", "example.ipynb", "sez_neurons.pickle"} & tracked
+    first, _ = build_bundle(tmp_path / "one", "test")
+    second, _ = build_bundle(tmp_path / "two", "test")
+    assert first.read_bytes() == second.read_bytes()
+    with zipfile.ZipFile(first) as archive:
+        names = set(archive.namelist())
+        assert "ASSET_MANIFEST.json" in names
+        assert "zehnora/data/knowledge.sqlite3" not in names
+        assert not any(name.startswith(".git/") for name in names)
+        manifest = json.loads(archive.read("ASSET_MANIFEST.json"))
+        assert manifest["product"] == "Zehnora" and manifest["version"] == "test"
 
 
 # ---------- chunking -------------------------------------------------------
