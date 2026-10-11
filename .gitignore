@@ -1,18 +1,24 @@
-# Python and notebook by-products
+# Python and packaging by-products
 __pycache__/
 *.py[cod]
-.ipynb_checkpoints/
-.brian2/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 .venv/
+/build/
+/dist/
 
-# FlyWire connectome data. Fetch the pinned files with scripts/download_data.py.
-/2023_03_23_completeness_630_final.csv
-/2023_03_23_connectivity_630_final.parquet
-/Completeness_783.csv
-/Connectivity_783.parquet
-/.*.part
+# Zehnora runtime state and local model weights
+/zehnora/data/
+/zehnora/models/
+/zehnora_workspace/
 
-# A simulation may produce gigabytes of results. Keep the upstream example output.
-/results/*
-!/results/example/
-!/results/example/**
+# Locally generated one-time sale artifacts
+/sale_artifacts/
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/

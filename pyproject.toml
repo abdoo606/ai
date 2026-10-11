@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-zehnora-assistant"
+version = "0.7.0"
+description = "API-free local personal assistant with deep research, grounded memory, and deliberative models"
+readme = "zehnora/README.md"
+requires-python = ">=3.10"
+license = "LicenseRef-Proprietary"
+license-files = ["LICENSE", "THIRD_PARTY_NOTICES.md"]
+authors = [{name = "Zehnora contributors"}]
+keywords = ["assistant", "local-ai", "offline", "arabic", "agents", "rag"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "fastapi>=0.110,<1",
+  "uvicorn>=0.29,<1",
+]
+
+[project.optional-dependencies]
+models = [
+  "transformers>=4.51,<6",
+  "huggingface-hub>=0.26,<2",
+  "safetensors>=0.4",
+  "torch>=2.2",
+]
+test = [
+  "httpx>=0.27,<1",
+  "pytest>=8,<10",
+  "build>=1.2,<2",
+]
+
+[project.scripts]
+zehnora-local = "zehnora.cli:main"
+zehnora-local-web = "zehnora.cli:serve"
+
+[project.urls]
+Repository = "https://github.com/abdoo606/ai"
+Issues = "https://github.com/abdoo606/ai/issues"
+
+[tool.setuptools.packages.find]
+include = ["zehnora*"]
+exclude = ["zehnora.tests*"]
+
+[tool.setuptools.package-data]
+zehnora = ["web/*.html", "requirements*.txt", "*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["zehnora/tests"]
+addopts = "-ra"
+filterwarnings = [
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "S"]
+per-file-ignores = {"zehnora/tests/*" = ["S101", "S106"]}
