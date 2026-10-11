@@ -21,20 +21,20 @@ Sibling project: `human_brain_agents/`, a spiking-network prototype of a human-l
 
 ## 3. Current state (as of this handoff)
 
-Restored onto `arena/a202685b-ai` from the earlier Jarvis work and actively developed here. The default is standalone. The optional local ensemble has separate intent, Arabic, and English model folders; all load lazily and runtime downloads are disabled by default.
+Restored onto `arena/a202685b-ai` from the earlier Jarvis work and actively developed here. The default is standalone. The strongest optional mode is `JARVIS_BACKEND=powerful`: intent → senior reasoner/tool use → adversarial critic → Arabic/English revision. Logical roles share one strong physical model pipeline in memory. All load lazily and runtime downloads are disabled by default.
 
 Working:
-- `config.py`: local-only settings, including separate `JARVIS_HF_INTENT_MODEL`, `JARVIS_HF_ARABIC_MODEL`, and `JARVIS_HF_ENGLISH_MODEL` folders. `JARVIS_BACKEND=ensemble` activates all three lazily. There are no API credentials or hosted-model settings.
+- `config.py`: local-only settings for intent, reasoner, critic, Arabic writer, and English writer paths plus 1–3 verification rounds. `powerful` activates deliberation; roles share `jarvis/models/reasoning` by default. There are no API credentials or hosted-model settings.
 - `knowledge.py`: hybrid local reasoning memory: normalized FTS5/BM25 plus weighted concept/co-occurrence tables. New chunks update the graph. Queries use graph expansion and reciprocal-rank fusion; answers use maximal marginal relevance and citations. Indexed graph lookups, WAL, a 32 MiB cache, and expansion caching keep it fast. Old FTS schema migrates automatically; old content can be graph-indexed with `rebuild_connections`.
 - `research.py`: `DeepResearcher` builds a broad bilingual curriculum, runs bounded multi-pass searches, reads and deduplicates pages, discovers subtopics, and archives them locally. `learn` / `اتعلم` routes here.
 - `web.py`: stdlib only. `html_to_text` (drops script, style, nav, footer, header, form), `fetch_text` (http/https only, 2 MB cap), `parse_search_results` (DuckDuckGo HTML), `search`.
 - `tools.py`: `ToolRegistry`. Tools: `get_time`, `web_search`, `fetch_url`, `learn_topic`, `learn_deep`, `recall`, `summarize_topic`, `connect_ideas`, `rebuild_connections`, `list_sources`, `list_topics`, `forget_topic`, `read_file`, `write_file`, `list_files`, and `run_command` (only with shell enabled). File tools are confined to the workspace (`~/jarvis_workspace`). Results are capped at 4000 characters. Errors come back as text, never as exceptions.
-- `llm.py`: `RuleBasedLLM` includes filler removal and typo-tolerant fuzzy commands. `LocalModelEnsembleLLM` first uses deterministic routing, then a small intent model for ambiguous/incomplete text, and routes replies to an Arabic or English reasoning model by script ratio. All three wrap lazy `HuggingFaceTransformersLLM` instances. Hosted-model clients do not exist.
+- `llm.py`: fuzzy commands and language detection remain. `DeliberativeLocalLLM` uses intent, senior reasoner, adversarial critic, and final language writer passes. `HuggingFaceTransformersLLM` caches pipelines by model path/device so logical roles share weights rather than duplicating a 14B/32B model. Hosted-model clients do not exist.
 - `agent.py`: `Assistant.ask()`. Runs a bounded tool loop (`MAX_STEPS=6`), keeps the last 40 messages, and turns LLM errors into text.
 - `server.py`: FastAPI. Routes: `GET /`, `GET /api/status`, `POST /api/chat`, `POST /api/reset`, `POST /api/learn`, `GET /api/recall?q=`. Relative URLs in the UI. Run with `uvicorn jarvis.server:get_app --factory --host 0.0.0.0 --port 8000`.
 - `web/index.html`: chat, learn panel, recall panel, mic and speaker buttons.
 - `cli.py` and `__main__.py`: terminal REPL. Commands: `exit`, `reset`.
-- `tests/test_jarvis.py`: 62 offline tests (chunking, FTS, parsing, file confinement, tool errors, intents, agent loop, end-to-end learn then recall). Run with `pytest -q jarvis/tests`. They use fixtures and scripted models, with no network.
+- `tests/test_jarvis.py`: 65 offline tests (chunking, FTS, parsing, file confinement, tool errors, intents, agent loop, end-to-end learn then recall). Run with `pytest -q jarvis/tests`. They use fixtures and scripted models, with no network.
 
 Known gaps and bugs:
 - The default offline brain is not generative, but now answers direct questions extractively, summarizes learned topics, lists sources, and emits inline citations. The optional Hugging Face backend provides generative local reasoning.
@@ -51,7 +51,7 @@ Known gaps and bugs:
 2. **Verify live web search and learning** when network access allows it (DuckDuckGo HTML, then a fallback engine if it fails). Add a retry and a rate limit.
 3. **Desktop app**: a small native-feeling window (for example pywebview wrapping the existing FastAPI server, or a Tkinter shell), plus a global hotkey. Keep the same API. Do not duplicate logic.
 4. **Live voice on desktop**: Python speech input and output with packages from PyPI only (for example `SpeechRecognition` with an offline engine, `pyttsx3`). Check that the required model files are not downloaded from hosts outside the allowlist.
-5. **Local model ensemble (standalone)**: intent + Arabic + English brains and a one-time public model installer are implemented. Next benchmark real hardware for Arabic quality, malformed input, tool JSON reliability, latency, and memory; never commit weights.
+5. **Local model ensemble (standalone)**: compact/balanced/powerful/max/frontier profiles and deliberate reason→critic→revision are implemented. Next benchmark real hardware for Arabic quality, malformed input, tool JSON reliability, latency, memory, and quantization; never commit weights.
 6. Device and smart-home control only after explicit permission and a safety design (confirmation before actions).
 
 ## 5. Rules for agents working here
@@ -75,11 +75,11 @@ Known gaps and bugs:
 | `research.py` | autonomous deep curriculum research and archiving |
 | `web.py` | search, fetch, HTML to text |
 | `tools.py` | tool registry and tools |
-| `llm.py` | fuzzy router, language detection, local 3-model ensemble, model factory |
+| `llm.py` | fuzzy router, shared local models, deliberate reasoning/critique/revision |
 | `agent.py` | `Assistant` loop and history |
 | `server.py` | FastAPI app, `get_app()` factory |
 | `cli.py`, `__main__.py` | terminal mode |
-| `scripts/install_models.py` | one-time public English/Arabic/intent model installer |
+| `scripts/install_models.py` | one-time compact/balanced/powerful/max/frontier local model installer |
 | `web/index.html` | web UI |
 | `tests/test_jarvis.py` | offline tests |
 | `README.md` | user-facing docs |

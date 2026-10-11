@@ -4,14 +4,16 @@ All backends are local and share ``chat(messages, tools) -> reply``:
 
 * ``RuleBasedLLM`` is the fast zero-dependency default with fuzzy commands.
 * ``HuggingFaceTransformersLLM`` runs one open model locally.
-* ``LocalModelEnsembleLLM`` combines a multilingual intent model with separate
-  Arabic and English reasoning models. Every model is lazy-loaded; no API key.
+* ``LocalModelEnsembleLLM`` combines multilingual intent with Arabic/English writers.
+* ``DeliberativeLocalLLM`` adds senior reasoning, adversarial critique, and revision.
+  Logical roles can share one strong model in memory. Everything is lazy and keyless.
 """
 
 from __future__ import annotations
 
 import json
 import re
+import threading
 from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional, Protocol
 
@@ -30,11 +32,18 @@ class LLMError(RuntimeError):
 class HuggingFaceTransformersLLM:
     """Local text-generation backend using Hugging Face Transformers.
 
+    Instances pointing at the same path share one loaded pipeline. This lets
+    Arabic writer, English writer, reasoner, and critic be distinct logical
+    brains without loading identical multi-billion-parameter weights four times.
+
     Model loading is delayed until the first message, so importing and serving
     Jarvis stays fast. Downloads are disabled by default: point
     ``JARVIS_HF_MODEL`` at a local model folder, or explicitly opt in once with
     ``JARVIS_HF_ALLOW_DOWNLOAD=1``.
     """
+
+    _shared_generators: Dict[tuple, Any] = {}
+    _load_lock = threading.Lock()
 
     def __init__(self, model: str, allow_download: bool = False, device: str = "auto",
                  max_new_tokens: int = 512, purpose: str = "general") -> None:
@@ -48,31 +57,38 @@ class HuggingFaceTransformersLLM:
     def _load(self):
         if self._generator is not None:
             return self._generator
-        try:
-            import torch
-            from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-        except ImportError as error:
-            raise LLMError(
-                "Hugging Face backend needs optional packages: "
-                "pip install -r jarvis/requirements-huggingface.txt"
-            ) from error
-        kwargs = {"local_files_only": not self.allow_download}
-        try:
-            tokenizer = AutoTokenizer.from_pretrained(self.model, **kwargs)
-            model = AutoModelForCausalLM.from_pretrained(self.model, **kwargs)
-            if self.device == "auto":
-                device: Any = 0 if torch.cuda.is_available() else (
-                    "mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available() else -1
+        cache_key = (self.model, self.device, self.allow_download)
+        with self._load_lock:
+            if cache_key in self._shared_generators:
+                self._generator = self._shared_generators[cache_key]
+                return self._generator
+            try:
+                import torch
+                from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
+            except ImportError as error:
+                raise LLMError(
+                    "Hugging Face backend needs optional packages: "
+                    "pip install -r jarvis/requirements-huggingface.txt"
+                ) from error
+            kwargs = {"local_files_only": not self.allow_download, "low_cpu_mem_usage": True}
+            try:
+                tokenizer = AutoTokenizer.from_pretrained(self.model, **kwargs)
+                model = AutoModelForCausalLM.from_pretrained(self.model, torch_dtype="auto", **kwargs)
+                if self.device == "auto":
+                    device: Any = 0 if torch.cuda.is_available() else (
+                        "mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available() else -1
+                    )
+                else:
+                    device = int(self.device) if self.device.lstrip("-").isdigit() else self.device
+                generator = pipeline("text-generation", model=model, tokenizer=tokenizer, device=device)
+                self._shared_generators[cache_key] = generator
+                self._generator = generator
+            except Exception as error:
+                hint = (
+                    "Install a local model profile with jarvis/scripts/install_models.py, or explicitly set "
+                    "JARVIS_HF_ALLOW_DOWNLOAD=1 for initial setup."
                 )
-            else:
-                device = int(self.device) if self.device.lstrip("-").isdigit() else self.device
-            self._generator = pipeline("text-generation", model=model, tokenizer=tokenizer, device=device)
-        except Exception as error:
-            hint = (
-                "Set JARVIS_HF_MODEL to a local model directory, or explicitly set "
-                "JARVIS_HF_ALLOW_DOWNLOAD=1 for the initial download."
-            )
-            raise LLMError(f"could not load Hugging Face model '{self.model}': {error}. {hint}") from error
+                raise LLMError(f"could not load local model '{self.model}': {error}. {hint}") from error
         return self._generator
 
     def _system_prompt(self, tools: Optional[List[dict]]) -> str:
@@ -90,7 +106,18 @@ class HuggingFaceTransformersLLM:
                 "dialect, including informal and imperfect spelling. Answer naturally in the user's dialect."
             )
         elif self.purpose == "english":
-            role = "You are Jarvis's English reasoning brain. Answer in clear natural English."
+            role = "You are Jarvis's English answer writer. Produce precise, natural English."
+        elif self.purpose == "reasoner":
+            role = (
+                "You are Jarvis's senior reasoning brain. Decompose difficult tasks, use tools for missing "
+                "evidence, connect facts across sources, test assumptions, calculate carefully, and draft a "
+                "complete answer. Prefer correctness over speed."
+            )
+        elif self.purpose == "critic":
+            role = (
+                "You are Jarvis's adversarial verifier. Find unsupported claims, missed constraints, logical "
+                "gaps, contradictions, unsafe actions, and citation problems. Give concise actionable fixes."
+            )
         else:
             role = "You are Jarvis, a concise local personal assistant. Reply in the user's language."
         return (
@@ -223,6 +250,85 @@ class LocalModelEnsembleLLM:
         return self._response_model(messages).chat(messages, tools)
 
 
+class DeliberativeLocalLLM(LocalModelEnsembleLLM):
+    """A slower, stronger local pipeline: understand, reason, critique, revise.
+
+    The response writers, reasoner, and critic may share one physical model
+    pipeline while receiving different role prompts. This provides multiple
+    independent passes without multiplying model memory.
+    """
+
+    def __init__(self, intent: HuggingFaceTransformersLLM,
+                 reasoner: HuggingFaceTransformersLLM,
+                 critic: HuggingFaceTransformersLLM,
+                 english: HuggingFaceTransformersLLM,
+                 arabic: HuggingFaceTransformersLLM,
+                 rounds: int = 1) -> None:
+        super().__init__(intent, english, arabic)
+        self.reasoner = reasoner
+        self.critic = critic
+        self.rounds = min(max(int(rounds), 1), 3)
+
+    def chat(self, messages: List[dict], tools: Optional[List[dict]] = None) -> Dict[str, Any]:
+        text = self._latest_user(messages)
+        if not (messages and messages[-1].get("role") == "tool"):
+            deterministic = RuleBasedLLM._route(text)
+            if deterministic is not None:
+                name, arguments = deterministic
+                return {"content": None, "tool_calls": [{
+                    "id": f"fast-{abs(hash((name, json.dumps(arguments, sort_keys=True, ensure_ascii=False))))}",
+                    "name": name, "arguments": json.dumps(arguments, ensure_ascii=False),
+                }]}
+            try:
+                intent = self.intent.chat(messages, tools)
+                if intent.get("tool_calls"):
+                    return intent
+            except LLMError:
+                pass
+
+        # The senior reasoner may request more evidence. The outer Assistant
+        # loop executes those tools and calls us again with their results.
+        draft_reply = self.reasoner.chat(messages, tools)
+        if draft_reply.get("tool_calls"):
+            return draft_reply
+        draft = (draft_reply.get("content") or "").strip()
+        if not draft:
+            return self._response_model(messages).chat(messages, tools)
+
+        writer = self._response_model(messages)
+        for _ in range(self.rounds):
+            review_messages = [*messages, {"role": "assistant", "content": draft}, {
+                "role": "user",
+                "content": (
+                    "Internal verification pass: critique the draft against the user's exact request and all "
+                    "available evidence. List only concrete errors, omissions, unsupported claims, and fixes."
+                ),
+            }]
+            try:
+                review = self.critic.chat(review_messages, [])
+                critique = (review.get("content") or "No specific issue found.").strip()
+            except LLMError:
+                critique = "Verification model unavailable; preserve evidence and avoid unsupported claims."
+            revision_messages = [*messages, {"role": "assistant", "content": draft}, {
+                "role": "user",
+                "content": (
+                    "Internal reviewer feedback follows. Revise the draft silently. Return only the final "
+                    "answer in my language, with concise reasoning, uncertainty, and source citations where "
+                    f"available. Feedback: {critique}"
+                ),
+            }]
+            try:
+                revised = writer.chat(revision_messages, tools)
+            except LLMError:
+                break
+            if revised.get("tool_calls"):
+                return revised
+            revised_text = (revised.get("content") or "").strip()
+            if revised_text:
+                draft = revised_text
+        return {"content": draft, "tool_calls": []}
+
+
 class RuleBasedLLM:
     """Offline router with useful source-grounded memory answers."""
 
@@ -335,6 +441,30 @@ class RuleBasedLLM:
 
 def make_llm(settings: Settings) -> LLM:
     common = {"allow_download": settings.hf_allow_download, "device": settings.hf_device}
+    if settings.llm_mode == "local-deliberative":
+        return DeliberativeLocalLLM(
+            intent=HuggingFaceTransformersLLM(
+                settings.hf_intent_model, max_new_tokens=settings.hf_intent_max_new_tokens,
+                purpose="intent", **common,
+            ),
+            reasoner=HuggingFaceTransformersLLM(
+                settings.hf_reasoning_model, max_new_tokens=settings.hf_max_new_tokens,
+                purpose="reasoner", **common,
+            ),
+            critic=HuggingFaceTransformersLLM(
+                settings.hf_critic_model, max_new_tokens=settings.hf_max_new_tokens,
+                purpose="critic", **common,
+            ),
+            english=HuggingFaceTransformersLLM(
+                settings.hf_english_model, max_new_tokens=settings.hf_max_new_tokens,
+                purpose="english", **common,
+            ),
+            arabic=HuggingFaceTransformersLLM(
+                settings.hf_arabic_model, max_new_tokens=settings.hf_max_new_tokens,
+                purpose="arabic", **common,
+            ),
+            rounds=settings.reasoning_rounds,
+        )
     if settings.llm_mode == "local-ensemble":
         return LocalModelEnsembleLLM(
             intent=HuggingFaceTransformersLLM(

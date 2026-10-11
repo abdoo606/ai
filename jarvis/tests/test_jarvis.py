@@ -13,8 +13,8 @@ from jarvis import web
 from jarvis.agent import Assistant
 from jarvis.config import load_settings
 from jarvis.knowledge import KnowledgeBase, chunk_text, normalize_text
-from jarvis.llm import (HuggingFaceTransformersLLM, LLMError, LocalModelEnsembleLLM,
-                        RuleBasedLLM, detect_language, make_llm)
+from jarvis.llm import (DeliberativeLocalLLM, HuggingFaceTransformersLLM, LLMError,
+                        LocalModelEnsembleLLM, RuleBasedLLM, detect_language, make_llm)
 from jarvis.research import DeepResearcher, canonical_url, curriculum_queries, discover_subtopics
 from jarvis.tools import build_registry
 
@@ -531,6 +531,51 @@ def test_ensemble_accepts_intent_model_tool_decision():
     model = LocalModelEnsembleLLM(intent, english, arabic)
     assert model.chat([{"role": "user", "content": "find my old thing"}], [])["tool_calls"]
     assert not english.calls and not arabic.calls
+
+
+def test_powerful_backend_builds_shared_weight_deliberative_brains(tmp_path):
+    settings = load_settings({
+        "JARVIS_HOME": str(tmp_path), "JARVIS_BACKEND": "powerful",
+        "JARVIS_HF_REASONING_MODEL": str(tmp_path / "reasoning"),
+        "JARVIS_HF_CRITIC_MODEL": str(tmp_path / "reasoning"),
+        "JARVIS_HF_ENGLISH_MODEL": str(tmp_path / "reasoning"),
+        "JARVIS_HF_ARABIC_MODEL": str(tmp_path / "reasoning"),
+    })
+    model = make_llm(settings)
+    assert settings.llm_mode == "local-deliberative"
+    assert isinstance(model, DeliberativeLocalLLM)
+    assert {model.reasoner.model, model.critic.model, model.english.model, model.arabic.model} == {
+        str(tmp_path / "reasoning")
+    }
+    assert all(brain._generator is None for brain in
+               (model.intent, model.reasoner, model.critic, model.english, model.arabic))
+
+
+def test_deliberative_pipeline_reasons_critiques_and_revises():
+    intent = StubBrain({"content": "general question", "tool_calls": []})
+    reasoner = StubBrain({"content": "draft answer", "tool_calls": []})
+    critic = StubBrain({"content": "add missing evidence", "tool_calls": []})
+    english = StubBrain({"content": "verified final answer", "tool_calls": []})
+    arabic = StubBrain({"content": "جواب نهائي", "tool_calls": []})
+    model = DeliberativeLocalLLM(intent, reasoner, critic, english, arabic, rounds=1)
+    reply = model.chat([{"role": "user", "content": "Explain this complex idea"}], [])
+    assert reply == {"content": "verified final answer", "tool_calls": []}
+    assert all(brain.calls for brain in (intent, reasoner, critic, english))
+    assert not arabic.calls
+    revision_messages = english.calls[0][0]
+    assert any("add missing evidence" in message.get("content", "") for message in revision_messages)
+
+
+def test_deliberative_reasoner_can_request_more_evidence_before_writing():
+    tool_reply = {"content": None, "tool_calls": [{"id": "r", "name": "recall", "arguments": "{}"}]}
+    model = DeliberativeLocalLLM(
+        StubBrain({"content": "ambiguous", "tool_calls": []}), StubBrain(tool_reply),
+        StubBrain({"content": "unused", "tool_calls": []}),
+        StubBrain({"content": "unused", "tool_calls": []}),
+        StubBrain({"content": "unused", "tool_calls": []}),
+    )
+    assert model.chat([{"role": "user", "content": "Explain an unusual concept"}], [])["tool_calls"]
+    assert not model.critic.calls and not model.english.calls and not model.arabic.calls
 
 
 def test_huggingface_reply_parser_supports_tool_calls_and_plain_text():

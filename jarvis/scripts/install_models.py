@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
-"""One-time installer for Jarvis's three public, local model brains.
+"""Install a keyless local Jarvis model profile once.
 
-No account or API key is used. Files are copied into jarvis/models and all
-later inference can run with downloads disabled.
+One strong multilingual reasoning model is shared in memory by four logical
+roles (reasoner, critic, Arabic writer, English writer). A smaller independent
+model handles intent. This is much stronger and more memory-efficient than
+loading separate duplicate weights.
 """
 
 from __future__ import annotations
@@ -12,60 +14,93 @@ import json
 import time
 from pathlib import Path
 
-MODELS = {
-    # Small English instruction model (Apache-2.0).
-    "english": "HuggingFaceTB/SmolLM2-1.7B-Instruct",
-    # Multilingual instruction model selected for strong Arabic support (Apache-2.0).
-    "arabic": "Qwen/Qwen2.5-1.5B-Instruct",
-    # Smaller multilingual model used only for intent/tool classification (Apache-2.0).
-    "intent": "Qwen/Qwen2.5-0.5B-Instruct",
+PROFILES = {
+    "compact": {
+        "intent": "Qwen/Qwen3-0.6B",
+        "reasoning": "Qwen/Qwen3-4B",
+        "guidance": "about 12 GB system RAM; entry-level local reasoning",
+    },
+    "balanced": {
+        "intent": "Qwen/Qwen3-0.6B",
+        "reasoning": "Qwen/Qwen3-8B",
+        "guidance": "about 20 GB system RAM; stronger everyday reasoning",
+    },
+    "powerful": {
+        "intent": "Qwen/Qwen3-1.7B",
+        "reasoning": "Qwen/Qwen3-14B",
+        "guidance": "about 36 GB system RAM; recommended high-quality profile",
+    },
+    "max": {
+        "intent": "Qwen/Qwen3-1.7B",
+        "reasoning": "Qwen/Qwen3-32B",
+        "guidance": "about 80 GB system RAM or suitable accelerator; strong workstation profile",
+    },
+    "frontier": {
+        "intent": "Qwen/Qwen3-1.7B",
+        "reasoning": "Qwen/Qwen3-235B-A22B",
+        "guidance": "roughly 500 GB unquantized memory and multi-GPU/server hardware",
+    },
 }
 ROOT = Path(__file__).resolve().parents[1]
 
 
 def parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Install Jarvis's local English, Arabic and intent models")
-    parser.add_argument("--only", choices=["all", *MODELS], default="all",
-                        help="install all three brains or just one")
+    parser = argparse.ArgumentParser(description="Install Jarvis's local intent and reasoning brains")
+    parser.add_argument("--profile", choices=PROFILES, default="powerful",
+                        help="hardware/quality profile (default: powerful)")
+    parser.add_argument("--only", choices=["all", "intent", "reasoning"], default="all")
     parser.add_argument("--directory", type=Path, default=ROOT / "models",
                         help="model destination (default: jarvis/models)")
-    parser.add_argument("--english", default=MODELS["english"], help="English model repository ID")
-    parser.add_argument("--arabic", default=MODELS["arabic"], help="Arabic-capable model repository ID")
-    parser.add_argument("--intent", default=MODELS["intent"], help="multilingual intent model repository ID")
-    parser.add_argument("--dry-run", action="store_true", help="show downloads and destinations without fetching")
+    parser.add_argument("--reasoning", help="override reasoning model repository ID")
+    parser.add_argument("--intent", help="override intent model repository ID")
+    parser.add_argument("--dry-run", action="store_true", help="show downloads without fetching")
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    selected = MODELS if args.only == "all" else {args.only: MODELS[args.only]}
-    configured = {"english": args.english, "arabic": args.arabic, "intent": args.intent}
+    profile = dict(PROFILES[args.profile])
+    configured = {
+        "intent": args.intent or profile["intent"],
+        "reasoning": args.reasoning or profile["reasoning"],
+    }
+    roles = list(configured) if args.only == "all" else [args.only]
+    print(f"Profile: {args.profile} — {profile['guidance']}")
+    for role in roles:
+        print(f"{role}: {configured[role]} -> {args.directory / role}")
     if args.dry_run:
-        for role in selected:
-            print(f"{role}: {configured[role]} -> {args.directory / role}")
         return 0
+
     try:
         from huggingface_hub import snapshot_download
     except ImportError as error:
         raise SystemExit("Install first: pip install -r jarvis/requirements-huggingface.txt") from error
 
     args.directory.mkdir(parents=True, exist_ok=True)
-    manifest = {"installed_at": time.time(), "models": {}}
-    for role in selected:
+    manifest_path = args.directory / "manifest.json"
+    manifest = {"installed_at": time.time(), "profile": args.profile, "models": {}}
+    if manifest_path.exists():
+        manifest.update(json.loads(manifest_path.read_text(encoding="utf-8")))
+        manifest["installed_at"] = time.time()
+        manifest["profile"] = args.profile
+    for role in roles:
         repo_id = configured[role]
         destination = args.directory / role
-        print(f"Installing {role} brain: {repo_id} -> {destination}")
+        print(f"\nInstalling {role} brain: {repo_id}")
         resolved = snapshot_download(repo_id=repo_id, local_dir=destination)
-        manifest["models"][role] = {"repo_id": repo_id, "path": str(destination), "resolved": resolved}
+        manifest.setdefault("models", {})[role] = {
+            "repo_id": repo_id, "path": str(destination), "resolved": resolved,
+        }
         print(f"Ready: {role}")
-    manifest_path = args.directory / "manifest.json"
-    if manifest_path.exists():
-        previous = json.loads(manifest_path.read_text(encoding="utf-8"))
-        previous.setdefault("models", {}).update(manifest["models"])
-        previous["installed_at"] = manifest["installed_at"]
-        manifest = previous
+    manifest["logical_roles"] = {
+        "intent": str(args.directory / "intent"),
+        "reasoner": str(args.directory / "reasoning"),
+        "critic": str(args.directory / "reasoning"),
+        "arabic_writer": str(args.directory / "reasoning"),
+        "english_writer": str(args.directory / "reasoning"),
+    }
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
-    print("\nModels installed. Start with: JARVIS_BACKEND=ensemble python -m jarvis")
+    print("\nReady. Start strong mode with: JARVIS_BACKEND=powerful python -m jarvis")
     return 0
 
 

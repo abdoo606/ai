@@ -42,6 +42,10 @@ def create_app(assistant: Assistant | None = None) -> FastAPI:
         if settings.llm_mode == "local-ensemble":
             models = {"intent": settings.hf_intent_model, "english": settings.hf_english_model,
                       "arabic": settings.hf_arabic_model}
+        elif settings.llm_mode == "local-deliberative":
+            models = {"intent": settings.hf_intent_model, "reasoner": settings.hf_reasoning_model,
+                      "critic": settings.hf_critic_model, "english": settings.hf_english_model,
+                      "arabic": settings.hf_arabic_model}
         return {"llm": settings.llm_mode, "model": model, "models": models,
                 "topics": bot.tools.call("list_topics", {}),
                 "shell_enabled": settings.allow_shell}

@@ -11,8 +11,9 @@ It is standalone: the default needs no API key and no external model. Everything
 - **Fast recall**: SQLite FTS5/BM25, indexed graph edges, a 32 MiB page cache, WAL mode, and cached query expansions keep retrieval lightweight without an embedding server.
 - **Grounded answers**: local extractive answering cites every source, compares connected evidence, and does not invent unsupported text.
 - **Arabic retrieval**: Arabic diacritics, alef variants, and ya/alef-maqsura variants are normalized in the search index while original source text is preserved.
-- **Three local model brains (optional)**: a small multilingual intent model recovers meaning from incomplete, dialectal, or misspelled input; a dedicated Arabic-prompted model and an English model handle reasoning and replies. Only the needed language model loads for a request, and nothing is sent to a model service.
-- **Fast fuzzy fallback**: common Arabic/English commands tolerate filler words and spelling errors even when no model is installed.
+- **Powerful local deliberation (optional)**: Jarvis runs an intent pass, senior reasoning pass, adversarial verification pass, and final Arabic/English revision. The reasoner, critic, and language writers are separate logical brains that share one strong physical model in memory.
+- **Hardware profiles**: `compact` (Qwen3-4B), `balanced` (8B), `powerful` (14B), `max` (32B), and server-class `frontier` (Qwen3-235B-A22B). Larger profiles improve capability but need dramatically more RAM/GPU memory.
+- **Robust intent**: a smaller multilingual model plus a fast fuzzy fallback recovers meaning from incomplete, dialectal, abbreviated, or misspelled Arabic/English commands.
 - **Web search and reading**: DuckDuckGo search, and readable text from any http(s) page.
 - **Files**: read, write and list files, **only inside the workspace** (`~/jarvis_workspace` by default). Paths that escape it are refused.
 - **Commands**: shell commands are **off by default**. Enable them with `JARVIS_ALLOW_SHELL=1`.
@@ -26,39 +27,46 @@ pip install -r jarvis/requirements.txt
 
 Python 3.10 or newer. SQLite with FTS5 is included in standard Python builds.
 
-### Optional: three-brain local ensemble
+### Optional: powerful local reasoning
 
 ```bash
 pip install -r jarvis/requirements-huggingface.txt
 
-# One-time public model download; no account or API key. Requires several GB.
-python jarvis/scripts/install_models.py
+# Preview model sizes/paths without downloading.
+python jarvis/scripts/install_models.py --profile powerful --dry-run
 
-# All later inference uses jarvis/models/* locally.
-JARVIS_BACKEND=ensemble python -m jarvis
+# One-time public download; no account or API key. The default powerful profile
+# uses Qwen3-14B for shared reasoning/writing and Qwen3-1.7B for intent.
+python jarvis/scripts/install_models.py --profile powerful
+
+# Later runs are fully local and use a deliberate reason → critique → revise loop.
+JARVIS_BACKEND=powerful python -m jarvis
 ```
 
-The installer selects `SmolLM2-1.7B-Instruct` for English,
-`Qwen2.5-1.5B-Instruct` for Arabic-capable reasoning, and
-`Qwen2.5-0.5B-Instruct` for fast multilingual intent detection. All are public
-Apache-2.0 models. They are separate so an ambiguous message is interpreted by
-the intent brain and then routed only to the matching Arabic or English brain.
-Use the installer flags to substitute other compatible local instruct models.
-The older single-model mode remains available as `JARVIS_BACKEND=huggingface`.
+Profiles: `compact` uses Qwen3-4B, `balanced` uses Qwen3-8B, `powerful` uses
+Qwen3-14B, `max` uses Qwen3-32B, and `frontier` uses Qwen3-235B-A22B for
+multi-GPU/server hardware. The strong model is loaded once and shared
+by senior reasoner, critic, Arabic writer, and English writer role prompts. This
+avoids four copies in memory. `JARVIS_REASONING_ROUNDS=1..3` trades latency for
+additional critique/revision passes. The single-model and simple ensemble modes
+remain available as `huggingface` and `ensemble`.
 
 ### Configuration (environment variables)
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `JARVIS_BACKEND` | `offline` | `offline`, single local `huggingface`, or three-brain local `ensemble`. No hosted/API backend. |
-| `JARVIS_HF_ENGLISH_MODEL` | `jarvis/models/english` | English reasoning model folder. |
-| `JARVIS_HF_ARABIC_MODEL` | `jarvis/models/arabic` | Arabic reasoning model folder. |
+| `JARVIS_BACKEND` | `offline` | `powerful` enables deliberate local reasoning; `ensemble`, `huggingface`, and `offline` are lighter modes. No hosted/API backend. |
+| `JARVIS_HF_REASONING_MODEL` | `jarvis/models/reasoning` | Senior reasoning model folder. |
+| `JARVIS_HF_CRITIC_MODEL` | `jarvis/models/reasoning` | Verifier model folder; shared by default to avoid duplicate weights. |
+| `JARVIS_HF_ENGLISH_MODEL` | `jarvis/models/reasoning` | English writer model folder. |
+| `JARVIS_HF_ARABIC_MODEL` | `jarvis/models/reasoning` | Arabic writer model folder. |
 | `JARVIS_HF_INTENT_MODEL` | `jarvis/models/intent` | Fast multilingual intent model folder. |
-| `JARVIS_HF_MODEL` | `jarvis/models/brain` | Model folder for legacy single-model mode. |
-| `JARVIS_HF_ALLOW_DOWNLOAD` | `0` | Runtime model downloads are blocked by default. The installer performs the explicit one-time setup. |
+| `JARVIS_HF_MODEL` | `jarvis/models/brain` | Folder for legacy single-model mode. |
+| `JARVIS_HF_ALLOW_DOWNLOAD` | `0` | Runtime downloads are blocked by default; use the explicit installer. |
 | `JARVIS_HF_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or a CUDA device index such as `0`. |
-| `JARVIS_HF_MAX_NEW_TOKENS` | `512` | Maximum tokens from Arabic/English reasoning brains. |
-| `JARVIS_HF_INTENT_MAX_NEW_TOKENS` | `192` | Maximum tokens from the intent brain. |
+| `JARVIS_HF_MAX_NEW_TOKENS` | `1024` | Maximum tokens from reasoning/writer passes. |
+| `JARVIS_HF_INTENT_MAX_NEW_TOKENS` | `256` | Maximum tokens from the intent pass. |
+| `JARVIS_REASONING_ROUNDS` | `1` | Critique/revision rounds, clamped to 1–3. |
 | `JARVIS_HOME` | `jarvis/data` | Where the knowledge base is stored. Git-ignored. |
 | `JARVIS_WORKSPACE` | `~/jarvis_workspace` | The only folder the file tools can touch. |
 | `JARVIS_ALLOW_SHELL` | `0` | Set to `1` to let the assistant run shell commands in the workspace. |
@@ -101,8 +109,8 @@ chat with `rebuild connections` through the tool interface, or by calling the
 - `research.py`: autonomous curriculum generation, bounded multi-pass research, URL/content deduplication, subtopic discovery, and local archiving.
 - `web.py`: standard-library HTTP, HTML-to-text, and DuckDuckGo result parsing.
 - `tools.py`: tools with JSON schemas. Output is capped at 4000 characters. Errors are returned as text, not raised.
-- `llm.py`: fuzzy zero-dependency intent routing, language detection, a lazy three-model local ensemble (intent + Arabic + English), and legacy single-model mode. No hosted-model client exists.
-- `scripts/install_models.py`: explicit one-time installer for the three public model snapshots and a local manifest.
+- `llm.py`: fuzzy routing, language detection, shared model loading, and a deliberate local pipeline: intent → senior reasoner/tool use → adversarial critic → Arabic/English final revision. No hosted-model client exists.
+- `scripts/install_models.py`: explicit one-time installer with compact/balanced/powerful/max profiles and a local manifest.
 - `agent.py`: the assistant loop. It calls tools for up to 6 steps, then answers, and keeps the last 40 messages of history.
 - `server.py`: FastAPI. The UI uses relative URLs, so it works behind a preview proxy.
 
@@ -123,7 +131,9 @@ The tests use fixtures for web pages and scripted models. They need no network a
 
 ## Limits
 
-- The default offline mode can route commands and answer from stored sources extractively, but it is not a generative conversational model. Use the local Hugging Face backend for that.
+- A local 14B/32B model is not guaranteed to equal Claude's frontier-scale training, context, or reliability. The deliberate multi-pass pipeline closes part of the quality gap, but hardware and model size remain real limits.
+- The `powerful` profile needs roughly 36 GB system RAM with unquantized Transformers weights; `max` needs roughly 80 GB. `frontier` is server-class and can require roughly 500 GB unquantized memory. Use `balanced`/`compact` on smaller machines or add a quantized model manually.
+- The default offline mode can route commands and answer from stored sources extractively, but it is not a generative conversational model. Use `JARVIS_BACKEND=powerful` for the strongest local mode.
 - Deep learning needs public websites while it is researching; answering from already archived memory works offline. Search providers and source sites can change or rate-limit.
 - No finite system can literally download “everything in the world.” Jarvis uses explicit source/depth budgets, reports what it covered, and can run more passes.
 - Learned text is stored as-is. Check important answers against the cited sources.
