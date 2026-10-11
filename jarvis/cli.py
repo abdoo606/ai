@@ -6,12 +6,14 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from .agent import Assistant
 
 
-def main(argv: list[str]) -> int:
+def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
     bot = Assistant.from_settings()
     if argv:
         print(bot.ask(" ".join(argv)))
@@ -31,6 +33,15 @@ def main(argv: list[str]) -> int:
             continue
         if text:
             print(f"jarvis> {bot.ask(text)}")
+
+
+def serve() -> None:
+    """Run the packaged web server, loopback-only unless explicitly configured."""
+    import uvicorn
+
+    host = os.environ.get("JARVIS_HOST", "127.0.0.1")
+    port = int(os.environ.get("JARVIS_PORT", "8000"))
+    uvicorn.run("jarvis.server:get_app", factory=True, host=host, port=port)
 
 
 if __name__ == "__main__":

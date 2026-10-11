@@ -1,0 +1,68 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-jarvis-assistant"
+version = "0.5.0"
+description = "API-free local personal assistant with deep research, grounded memory, and deliberative models"
+readme = "jarvis/README.md"
+requires-python = ">=3.10"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{name = "Jarvis contributors"}]
+keywords = ["assistant", "local-ai", "offline", "arabic", "agents", "rag"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+]
+dependencies = [
+  "fastapi>=0.110,<1",
+  "uvicorn>=0.29,<1",
+]
+
+[project.optional-dependencies]
+models = [
+  "transformers>=4.51,<6",
+  "huggingface-hub>=0.26,<2",
+  "safetensors>=0.4",
+  "torch>=2.2",
+]
+test = [
+  "httpx>=0.27,<1",
+  "pytest>=8,<10",
+  "build>=1.2,<2",
+]
+
+[project.scripts]
+jarvis-local = "jarvis.cli:main"
+jarvis-local-web = "jarvis.cli:serve"
+
+[project.urls]
+Repository = "https://github.com/abdoo606/ai"
+Issues = "https://github.com/abdoo606/ai/issues"
+
+[tool.setuptools.packages.find]
+include = ["jarvis*"]
+exclude = ["jarvis.tests*"]
+
+[tool.setuptools.package-data]
+jarvis = ["web/*.html", "requirements*.txt", "*.md"]
+
+[tool.pytest.ini_options]
+testpaths = ["jarvis/tests"]
+addopts = "-ra"
+filterwarnings = [
+  "ignore:Using `httpx` with `starlette.testclient` is deprecated:starlette.exceptions.StarletteDeprecationWarning",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 120
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "S"]
+per-file-ignores = {"jarvis/tests/*" = ["S101", "S106"]}

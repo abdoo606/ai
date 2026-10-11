@@ -13,11 +13,17 @@ from jarvis import web
 from jarvis.agent import Assistant
 from jarvis.config import load_settings
 from jarvis.knowledge import KnowledgeBase, chunk_text, normalize_text
-from jarvis.llm import (DeliberativeLocalLLM, HuggingFaceTransformersLLM, LLMError,
-                        LocalModelEnsembleLLM, RuleBasedLLM, detect_language, make_llm)
+from jarvis.llm import (
+    DeliberativeLocalLLM,
+    HuggingFaceTransformersLLM,
+    LLMError,
+    LocalModelEnsembleLLM,
+    RuleBasedLLM,
+    detect_language,
+    make_llm,
+)
 from jarvis.research import DeepResearcher, canonical_url, curriculum_queries, discover_subtopics
 from jarvis.tools import build_registry
-
 
 # ---------- fixtures -------------------------------------------------------
 
@@ -50,7 +56,7 @@ def fake_web(monkeypatch):
     ]
     monkeypatch.setattr(web, "search", lambda q, limit=5: results[:limit])
 
-    def fetch(url):
+    def fetch(url, allow_private=False):
         if url not in pages:
             raise OSError("no such fixture page")
         title, body = pages[url]
@@ -233,6 +239,25 @@ def test_fetch_text_rejects_non_http_urls():
         web.fetch_text("file:///etc/passwd")
 
 
+def test_web_url_security_blocks_credentials_and_private_networks(monkeypatch):
+    with pytest.raises(ValueError, match="credentials"):
+        web.validate_web_url("https://user:password@example.com/secret")
+    monkeypatch.setattr(web.socket, "getaddrinfo", lambda *args: [
+        (2, 1, 6, "", ("127.0.0.1", 80)),
+    ])
+    with pytest.raises(ValueError, match="private"):
+        web.validate_web_url("http://internal.example/admin")
+    # Explicit private-web opt-in is available for intentional local integrations.
+    assert web.validate_web_url("http://127.0.0.1:9000", allow_private=True)
+
+
+def test_web_url_security_accepts_public_resolution(monkeypatch):
+    monkeypatch.setattr(web.socket, "getaddrinfo", lambda *args: [
+        (2, 1, 6, "", ("93.184.216.34", 443)),
+    ])
+    assert web.validate_web_url("https://example.com/page") == "https://example.com/page"
+
+
 # ---------- autonomous deep research --------------------------------------
 
 def test_curriculum_is_broad_and_multilingual():
@@ -289,8 +314,15 @@ def test_registry_has_expected_tools(kb, settings):
 
 def test_shell_only_when_enabled(kb, tmp_path):
     on = load_settings({"JARVIS_HOME": str(tmp_path), "JARVIS_WORKSPACE": str(tmp_path / "w"),
-                        "JARVIS_ALLOW_SHELL": "1"})
-    assert "run_command" in build_registry(kb, on).tools
+                        "JARVIS_ALLOW_SHELL": "1", "JARVIS_ALLOWED_COMMANDS": "echo,python"})
+    registry = build_registry(kb, on)
+    assert "run_command" in registry.tools
+    assert "hello" in registry.call("run_command", {"command": "echo hello"})
+    assert "not in JARVIS_ALLOWED_COMMANDS" in registry.call(
+        "run_command", {"command": "sh -c 'touch escaped'"})
+    shell_without_allowlist = load_settings({"JARVIS_HOME": str(tmp_path),
+                                             "JARVIS_ALLOW_SHELL": "1"})
+    assert "run_command" not in build_registry(kb, shell_without_allowlist).tools
 
 
 def test_file_tools_are_confined_to_workspace(kb, settings):

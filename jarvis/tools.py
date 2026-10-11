@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import datetime as _dt
 import json
-import subprocess
+import shlex
+import subprocess  # nosec B404
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional
@@ -102,7 +103,7 @@ def build_registry(kb: KnowledgeBase, settings: Settings) -> ToolRegistry:
     ))
 
     def fetch_url(url: str) -> str:
-        title, text = web.fetch_text(url)
+        title, text = web.fetch_text(url, allow_private=settings.allow_private_web)
         return f"{title}\n{url}\n\n{text}"
 
     reg.register(Tool(
@@ -122,7 +123,7 @@ def build_registry(kb: KnowledgeBase, settings: Settings) -> ToolRegistry:
             if kb.has_source(topic, hit["url"]):
                 continue
             try:
-                title, text = web.fetch_text(hit["url"])
+                title, text = web.fetch_text(hit["url"], allow_private=settings.allow_private_web)
             except Exception as e:
                 log.append(f"skipped {hit['url']}: {e}")
                 continue
@@ -145,7 +146,10 @@ def build_registry(kb: KnowledgeBase, settings: Settings) -> ToolRegistry:
     def learn_deep(topic: str, max_sources: int = 24, depth: int = 2,
                    results_per_query: int = 5) -> str:
         """Map a field broadly, expand subtopics, and archive readable sources."""
-        researcher = DeepResearcher(kb, search=web.search, fetch=web.fetch_text)
+        researcher = DeepResearcher(
+            kb, search=web.search,
+            fetch=lambda url: web.fetch_text(url, allow_private=settings.allow_private_web),
+        )
         report = researcher.learn(topic, max_sources=int(max_sources), depth=int(depth),
                                   results_per_query=int(results_per_query))
         return report.render()
@@ -261,15 +265,24 @@ def build_registry(kb: KnowledgeBase, settings: Settings) -> ToolRegistry:
                                  for p in workspace.resolve().rglob("*") if p.is_file())) or "empty",
     ))
 
-    # --- shell (opt-in) ---
-    if settings.allow_shell:
+    # --- commands (explicit opt-in + executable allowlist; never shell=True) ---
+    if settings.allow_shell and settings.allowed_commands:
         def run_command(command: str, timeout: int = 20) -> str:
-            proc = subprocess.run(command, shell=True, cwd=str(workspace), capture_output=True,
-                                  text=True, timeout=int(timeout))
+            arguments = shlex.split(command)
+            if not arguments:
+                return "error: command is empty"
+            executable = Path(arguments[0]).name
+            if executable not in settings.allowed_commands:
+                return f"error: executable '{executable}' is not in JARVIS_ALLOWED_COMMANDS"
+            # Executable name is checked against an operator-provided allowlist; no shell is invoked.
+            proc = subprocess.run(  # noqa: S603  # nosec B603
+                arguments, shell=False, check=False, cwd=str(workspace), capture_output=True,
+                text=True, timeout=min(max(int(timeout), 1), 60), env={"PATH": "/usr/bin:/bin"},
+            )
             return f"exit {proc.returncode}\n{proc.stdout}{proc.stderr}"
 
         reg.register(Tool(
-            "run_command", "Run a shell command in the workspace and return its output.",
+            "run_command", "Run one explicitly allowlisted executable in the workspace; shell syntax is disabled.",
             _obj({"command": {"type": "string"}, "timeout": {"type": "integer", "default": 20}},
                  ["command"]),
             run_command,

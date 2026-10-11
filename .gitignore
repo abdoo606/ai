@@ -1,6 +1,9 @@
-# Python and notebook by-products
+# Python, packaging, and notebook by-products
 __pycache__/
 *.py[cod]
+*.egg-info/
+/build/
+/dist/
 .ipynb_checkpoints/
 .brian2/
 .venv/

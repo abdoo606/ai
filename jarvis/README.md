@@ -16,13 +16,19 @@ It is standalone: the default needs no API key and no external model. Everything
 - **Robust intent**: a smaller multilingual model plus a fast fuzzy fallback recovers meaning from incomplete, dialectal, abbreviated, or misspelled Arabic/English commands.
 - **Web search and reading**: DuckDuckGo search, and readable text from any http(s) page.
 - **Files**: read, write and list files, **only inside the workspace** (`~/jarvis_workspace` by default). Paths that escape it are refused.
-- **Commands**: shell commands are **off by default**. Enable them with `JARVIS_ALLOW_SHELL=1`.
+- **Commands**: disabled by default. Enabling requires both `JARVIS_ALLOW_SHELL=1` and an executable allowlist; commands run with `shell=False` inside the workspace.
 - **Interfaces**: web page (`/`) with a chat, a learn panel, and microphone and speaker buttons (Chrome or Edge); terminal mode (`python -m jarvis`).
 
 ## Setup
 
 ```bash
+# Source checkout
 pip install -r jarvis/requirements.txt
+
+# Or install the packaged application and console commands
+pip install .
+jarvis-local "time"
+jarvis-local-web                 # binds safely to 127.0.0.1 by default
 ```
 
 Python 3.10 or newer. SQLite with FTS5 is included in standard Python builds.
@@ -47,7 +53,9 @@ Profiles: `compact` uses Qwen3-4B, `balanced` uses Qwen3-8B, `powerful` uses
 Qwen3-14B, `max` uses Qwen3-32B, and `frontier` uses Qwen3-235B-A22B for
 multi-GPU/server hardware. The strong model is loaded once and shared
 by senior reasoner, critic, Arabic writer, and English writer role prompts. This
-avoids four copies in memory. `JARVIS_REASONING_ROUNDS=1..3` trades latency for
+avoids four copies in memory. The installer resolves and records immutable model
+commit revisions for reproducible/supply-chain-aware releases.
+`JARVIS_REASONING_ROUNDS=1..3` trades latency for
 additional critique/revision passes. The single-model and simple ensemble modes
 remain available as `huggingface` and `ensemble`.
 
@@ -63,13 +71,18 @@ remain available as `huggingface` and `ensemble`.
 | `JARVIS_HF_INTENT_MODEL` | `jarvis/models/intent` | Fast multilingual intent model folder. |
 | `JARVIS_HF_MODEL` | `jarvis/models/brain` | Folder for legacy single-model mode. |
 | `JARVIS_HF_ALLOW_DOWNLOAD` | `0` | Runtime downloads are blocked by default; use the explicit installer. |
+| `JARVIS_HF_REVISION` | empty | Immutable commit SHA required if runtime download is deliberately enabled. |
 | `JARVIS_HF_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or a CUDA device index such as `0`. |
 | `JARVIS_HF_MAX_NEW_TOKENS` | `1024` | Maximum tokens from reasoning/writer passes. |
 | `JARVIS_HF_INTENT_MAX_NEW_TOKENS` | `256` | Maximum tokens from the intent pass. |
 | `JARVIS_REASONING_ROUNDS` | `1` | Critique/revision rounds, clamped to 1–3. |
 | `JARVIS_HOME` | `jarvis/data` | Where the knowledge base is stored. Git-ignored. |
 | `JARVIS_WORKSPACE` | `~/jarvis_workspace` | The only folder the file tools can touch. |
-| `JARVIS_ALLOW_SHELL` | `0` | Set to `1` to let the assistant run shell commands in the workspace. |
+| `JARVIS_ACCESS_TOKEN` | empty | Optional local web access token; required outside loopback deployments. |
+| `JARVIS_RATE_LIMIT_PER_MINUTE` | `60` | Per-client limit for chat/research requests (1–600). |
+| `JARVIS_ALLOW_PRIVATE_WEB` | `0` | Permit fetching local/private network URLs. Keep off for normal use. |
+| `JARVIS_ALLOW_SHELL` | `0` | First switch required for command execution. |
+| `JARVIS_ALLOWED_COMMANDS` | empty | Comma-separated executable allowlist, e.g. `python,git`; empty keeps commands unavailable. |
 
 ## Run
 
@@ -117,17 +130,28 @@ chat with `rebuild connections` through the tool interface, or by calling the
 ## Tests
 
 ```bash
-pytest -q jarvis/tests
+pip install -r jarvis/requirements-dev.txt
+pytest -q
+python -m build
 ```
 
-The tests use fixtures for web pages and scripted models. They need no network and no API key.
+The suite covers memory/search/graph migrations, deep research, Arabic
+normalization, malformed intents, deliberative orchestration, workspace and
+command boundaries, SSRF protection, authentication, rate limits, validation,
+API behavior, and packaging without network or model weights. GitHub Actions
+runs it on Python 3.10–3.12.
 
 ## Security notes
 
-- Files: confined to the workspace (checked after path resolution, so `..` and absolute paths are refused).
-- Shell: disabled unless `JARVIS_ALLOW_SHELL=1`. Only enable it on a machine you trust, because the model can run any command that the account can.
-- Web fetch: only `http` and `https`. Pages are capped at 2 MB.
-- No model-service credentials are accepted or stored. The knowledge base, local model weights, and workspace are git-ignored.
+- The packaged server binds to loopback. Set `JARVIS_ACCESS_TOKEN` plus TLS/reverse-proxy network controls before exposing it elsewhere.
+- Files are confined to the workspace after path resolution.
+- Commands require two explicit switches, an executable allowlist, run with `shell=False`, have a 60-second maximum, and use a restricted `PATH`.
+- Web fetching blocks URL credentials, private/loopback/link-local/reserved targets, unsafe redirects, unsupported content types, and pages over 2 MB. Private fetches require explicit opt-in.
+- API bodies and query lengths are bounded; expensive endpoints are rate-limited; security/no-store headers are emitted.
+- No model-service credentials or telemetry exist. Memory, model weights, and workspaces are git-ignored.
+
+See [SECURITY.md](SECURITY.md) for reporting/deployment guidance and
+[RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md) before commercial distribution.
 
 ## Limits
 

@@ -23,6 +23,10 @@ class Settings:
     home: Path
     workspace: Path
     allow_shell: bool
+    access_token: str = ""
+    allowed_commands: tuple[str, ...] = ()
+    allow_private_web: bool = False
+    rate_limit_per_minute: int = 60
     hf_model: str = "jarvis/models/brain"
     hf_english_model: str = "jarvis/models/reasoning"
     hf_arabic_model: str = "jarvis/models/reasoning"
@@ -30,6 +34,7 @@ class Settings:
     hf_reasoning_model: str = "jarvis/models/reasoning"
     hf_critic_model: str = "jarvis/models/reasoning"
     hf_allow_download: bool = False
+    hf_revision: str = ""
     hf_device: str = "auto"
     hf_max_new_tokens: int = 1024
     hf_intent_max_new_tokens: int = 256
@@ -65,6 +70,11 @@ def load_settings(env: dict | None = None) -> Settings:
         home=Path(env.get("JARVIS_HOME", here / "data")).expanduser(),
         workspace=Path(env.get("JARVIS_WORKSPACE", Path.home() / "jarvis_workspace")).expanduser(),
         allow_shell=_truthy(env.get("JARVIS_ALLOW_SHELL", "0")),
+        access_token=env.get("JARVIS_ACCESS_TOKEN", "").strip(),
+        allowed_commands=tuple(command.strip() for command in
+                               env.get("JARVIS_ALLOWED_COMMANDS", "").split(",") if command.strip()),
+        allow_private_web=_truthy(env.get("JARVIS_ALLOW_PRIVATE_WEB", "0")),
+        rate_limit_per_minute=min(_integer(env, "JARVIS_RATE_LIMIT_PER_MINUTE", 60, minimum=1), 600),
         hf_model=env.get("JARVIS_HF_MODEL", "jarvis/models/brain").strip(),
         hf_english_model=env.get("JARVIS_HF_ENGLISH_MODEL", "jarvis/models/reasoning").strip(),
         hf_arabic_model=env.get("JARVIS_HF_ARABIC_MODEL", "jarvis/models/reasoning").strip(),
@@ -72,6 +82,7 @@ def load_settings(env: dict | None = None) -> Settings:
         hf_reasoning_model=env.get("JARVIS_HF_REASONING_MODEL", "jarvis/models/reasoning").strip(),
         hf_critic_model=env.get("JARVIS_HF_CRITIC_MODEL", "jarvis/models/reasoning").strip(),
         hf_allow_download=_truthy(env.get("JARVIS_HF_ALLOW_DOWNLOAD", "0")),
+        hf_revision=env.get("JARVIS_HF_REVISION", "").strip(),
         hf_device=env.get("JARVIS_HF_DEVICE", "auto").strip(),
         hf_max_new_tokens=_integer(env, "JARVIS_HF_MAX_NEW_TOKENS", 1024),
         hf_intent_max_new_tokens=_integer(env, "JARVIS_HF_INTENT_MAX_NEW_TOKENS", 256),

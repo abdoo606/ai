@@ -138,7 +138,7 @@ class DeepResearcher:
         seen_urls = {canonical_url(source["url"]) for source in self.kb.sources(topic)}
         seen_content = set()
 
-        for level in range(depth):
+        for _level in range(depth):
             if report.stored_sources >= max_sources or not queue:
                 break
             current, queue = queue, []
@@ -153,7 +153,7 @@ class DeepResearcher:
                 try:
                     hits = self.search(query, limit=results_per_query)
                 except Exception:
-                    continue
+                    hits = []  # provider failures are isolated; later curriculum queries still run
                 level_results.extend(hits)
                 for hit in hits:
                     if report.stored_sources >= max_sources:

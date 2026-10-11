@@ -31,28 +31,29 @@ Working:
 - `tools.py`: `ToolRegistry`. Tools: `get_time`, `web_search`, `fetch_url`, `learn_topic`, `learn_deep`, `recall`, `summarize_topic`, `connect_ideas`, `rebuild_connections`, `list_sources`, `list_topics`, `forget_topic`, `read_file`, `write_file`, `list_files`, and `run_command` (only with shell enabled). File tools are confined to the workspace (`~/jarvis_workspace`). Results are capped at 4000 characters. Errors come back as text, never as exceptions.
 - `llm.py`: fuzzy commands and language detection remain. `DeliberativeLocalLLM` uses intent, senior reasoner, adversarial critic, and final language writer passes. `HuggingFaceTransformersLLM` caches pipelines by model path/device so logical roles share weights rather than duplicating a 14B/32B model. Hosted-model clients do not exist.
 - `agent.py`: `Assistant.ask()`. Runs a bounded tool loop (`MAX_STEPS=6`), keeps the last 40 messages, and turns LLM errors into text.
-- `server.py`: FastAPI. Routes: `GET /`, `GET /api/status`, `POST /api/chat`, `POST /api/reset`, `POST /api/learn`, `GET /api/recall?q=`. Relative URLs in the UI. Run with `uvicorn jarvis.server:get_app --factory --host 0.0.0.0 --port 8000`.
+- `server.py`: hardened FastAPI boundary with optional constant-time bearer/header authentication, failed-auth throttling, per-client expensive-route rate limiting, bounded Pydantic inputs, health endpoint, no-store/security headers, and routes: `GET /`, `GET /api/status`, `POST /api/chat`, `POST /api/reset`, `POST /api/learn`, `GET /api/recall?q=`. Relative URLs in the UI. Run with `uvicorn jarvis.server:get_app --factory --host 0.0.0.0 --port 8000`.
 - `web/index.html`: chat, learn panel, recall panel, mic and speaker buttons.
 - `cli.py` and `__main__.py`: terminal REPL. Commands: `exit`, `reset`.
-- `tests/test_jarvis.py`: 65 offline tests (chunking, FTS, parsing, file confinement, tool errors, intents, agent loop, end-to-end learn then recall). Run with `pytest -q jarvis/tests`. They use fixtures and scripted models, with no network.
+- `tests/test_jarvis.py` plus `test_server.py`: 75 offline tests (chunking, FTS, parsing, file confinement, tool errors, intents, agent loop, end-to-end learn then recall). Run with `pytest -q jarvis/tests`. They use fixtures and scripted models, with no network.
 
 Known gaps and bugs:
 - The default offline brain is not generative, but now answers direct questions extractively, summarizes learned topics, lists sources, and emits inline citations. The optional Hugging Face backend provides generative local reasoning.
 - The DuckDuckGo search was **never tested live** (the sandbox has no route to it). Parsing is tested only on a fixture. Expect breakage if the HTML changes.
 - `learn_deep` filters short pages and deduplicates URLs/exact content during each run, but does not yet read PDFs or detect semantic near-duplicates across separate runs.
 - Retrieval is hybrid BM25 + concept graph, not neural embeddings. The graph records co-occurrence, so it must never be presented as proof of causation.
-- No authentication on the web server. Bind to 0.0.0.0 only in trusted networks (the sandbox preview needs it).
-- Shell: `run_command` runs with `shell=True` in the workspace, with a timeout but no sandbox. Only enable it deliberately.
+- Optional `JARVIS_ACCESS_TOKEN` authentication, failed-auth throttling, and request rate limits are implemented. Packaged web startup binds to loopback by default; any non-loopback commercial deployment still needs TLS and network controls.
+- Commands require both enablement and an executable allowlist, use `shell=False`, a restricted PATH, workspace cwd, and a 60-second cap. Consumer releases still need OS sandboxing before enabling commands.
 - The desktop GUI, device and smart-home control, and live voice in the terminal are not built.
 
 ## 4. Where we are heading (priority order)
 
 1. **Continue improving autonomous deep learning and grounded offline answers.** Graph expansion, reciprocal-rank fusion, MMR sentence selection, summaries, source listing, citations, and Arabic normalization are implemented. Next add contradiction detection and learning-by-date queries.
-2. **Verify live web search and learning** when network access allows it (DuckDuckGo HTML, then a fallback engine if it fails). Add a retry and a rate limit.
-3. **Desktop app**: a small native-feeling window (for example pywebview wrapping the existing FastAPI server, or a Tkinter shell), plus a global hotkey. Keep the same API. Do not duplicate logic.
-4. **Live voice on desktop**: Python speech input and output with packages from PyPI only (for example `SpeechRecognition` with an offline engine, `pyttsx3`). Check that the required model files are not downloaded from hosts outside the allowlist.
-5. **Local model ensemble (standalone)**: compact/balanced/powerful/max/frontier profiles and deliberate reason→critic→revision are implemented. Next benchmark real hardware for Arabic quality, malformed input, tool JSON reliability, latency, memory, and quantization; never commit weights.
-6. Device and smart-home control only after explicit permission and a safety design (confirmation before actions).
+2. **Complete commercial QA.** Packaging, multi-version CI, API security tests, SSRF controls, SECURITY.md, and a release checklist exist. Still required: real-model/hardware benchmarks, dependency/SBOM scanning, OS sandboxing, independent penetration testing, signed installers, and legal/privacy/trademark review.
+3. **Verify live web search and learning** when network access allows it (DuckDuckGo HTML, then a fallback engine if it fails). Add a retry and a rate limit.
+4. **Desktop app**: a small native-feeling window (for example pywebview wrapping the existing FastAPI server, or a Tkinter shell), plus a global hotkey. Keep the same API. Do not duplicate logic.
+5. **Live voice on desktop**: Python speech input and output with packages from PyPI only (for example `SpeechRecognition` with an offline engine, `pyttsx3`). Check that the required model files are not downloaded from hosts outside the allowlist.
+6. **Local model ensemble (standalone)**: compact/balanced/powerful/max/frontier profiles and deliberate reason→critic→revision are implemented. Next benchmark real hardware for Arabic quality, malformed input, tool JSON reliability, latency, memory, and quantization; never commit weights.
+7. Device and smart-home control only after explicit permission and a safety design (confirmation before actions).
 
 ## 5. Rules for agents working here
 
@@ -77,11 +78,13 @@ Known gaps and bugs:
 | `tools.py` | tool registry and tools |
 | `llm.py` | fuzzy router, shared local models, deliberate reasoning/critique/revision |
 | `agent.py` | `Assistant` loop and history |
-| `server.py` | FastAPI app, `get_app()` factory |
+| `server.py` | authenticated/rate-limited FastAPI app, health/status routes |
 | `cli.py`, `__main__.py` | terminal mode |
 | `scripts/install_models.py` | one-time compact/balanced/powerful/max/frontier local model installer |
 | `web/index.html` | web UI |
-| `tests/test_jarvis.py` | offline tests |
+| `tests/` | offline unit, security, API, migration, orchestration tests |
+| `SECURITY.md`, `RELEASE_CHECKLIST.md` | security and commercial-release gates |
+| `pyproject.toml` | wheel/sdist metadata and console commands |
 | `README.md` | user-facing docs |
 | `README_AI.md` | this file |
 

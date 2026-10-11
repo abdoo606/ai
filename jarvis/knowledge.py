@@ -125,7 +125,7 @@ def extractive_answer(query: str, hits: List[Hit], max_sentences: int = 5) -> st
         # Maximal marginal relevance: reward new query coverage and penalize
         # sentences that merely repeat already selected evidence.
         best_index, best_value = 0, float("-inf")
-        for index, (base_score, rank, sentence, words) in enumerate(remaining):
+        for index, (base_score, _rank, _sentence, words) in enumerate(remaining):
             novelty = len((words & query_words) - covered)
             redundancy = max((len(words & old_words) / max(len(words | old_words), 1)
                               for _, _, old_words in chosen), default=0.0)
@@ -336,19 +336,29 @@ class KnowledgeBase:
         terms = list(dict.fromkeys(_tokens(query)))[:12]
         if not terms:
             return []
-        placeholders = ",".join("?" for _ in terms)
-        sql = (
-            "SELECT topic, left_term, right_term, weight FROM concept_relations "
-            f"WHERE (left_term IN ({placeholders}) OR right_term IN ({placeholders}))"
-        )
-        params: list = [*terms, *terms]
-        if topic:
-            sql += " AND topic = ?"
-            params.append(normalize_text(topic.strip()))
-        sql += " ORDER BY weight DESC LIMIT ?"
-        params.append(max(1, int(limit)))
-        return [Connection(row["left_term"], row["right_term"], int(row["weight"]), row["topic"])
-                for row in self.db.execute(sql, params)]
+        normalized_topic = normalize_text(topic.strip()) if topic else None
+        found: dict[tuple[str, str, str], Connection] = {}
+        # Fixed parameterized statements avoid constructing an IN clause while
+        # indexed left/right lookups keep this small multi-query pass fast.
+        for term in terms:
+            if normalized_topic:
+                rows = self.db.execute(
+                    "SELECT topic, left_term, right_term, weight FROM concept_relations "
+                    "WHERE topic = ? AND (left_term = ? OR right_term = ?) "
+                    "ORDER BY weight DESC LIMIT ?",
+                    (normalized_topic, term, term, max(4, int(limit) * 2)),
+                )
+            else:
+                rows = self.db.execute(
+                    "SELECT topic, left_term, right_term, weight FROM concept_relations "
+                    "WHERE left_term = ? OR right_term = ? ORDER BY weight DESC LIMIT ?",
+                    (term, term, max(4, int(limit) * 2)),
+                )
+            for row in rows:
+                key = (row["topic"], row["left_term"], row["right_term"])
+                found[key] = Connection(row["left_term"], row["right_term"],
+                                        int(row["weight"]), row["topic"])
+        return sorted(found.values(), key=lambda connection: connection.weight, reverse=True)[:max(1, int(limit))]
 
     def related_terms(self, query: str, topic: Optional[str] = None, limit: int = 6) -> List[str]:
         cache_key = (normalize_text(query), normalize_text(topic or ""), int(limit))

@@ -53,6 +53,8 @@ def parse_args() -> argparse.Namespace:
                         help="model destination (default: jarvis/models)")
     parser.add_argument("--reasoning", help="override reasoning model repository ID")
     parser.add_argument("--intent", help="override intent model repository ID")
+    parser.add_argument("--reasoning-revision", help="immutable commit SHA (resolved automatically if omitted)")
+    parser.add_argument("--intent-revision", help="immutable commit SHA (resolved automatically if omitted)")
     parser.add_argument("--dry-run", action="store_true", help="show downloads without fetching")
     return parser.parse_args()
 
@@ -66,16 +68,20 @@ def main() -> int:
     }
     roles = list(configured) if args.only == "all" else [args.only]
     print(f"Profile: {args.profile} — {profile['guidance']}")
+    requested_revisions = {"intent": args.intent_revision, "reasoning": args.reasoning_revision}
     for role in roles:
-        print(f"{role}: {configured[role]} -> {args.directory / role}")
+        revision = requested_revisions[role] or "<resolve-current-commit>"
+        print(f"{role}: {configured[role]}@{revision} -> {args.directory / role}")
     if args.dry_run:
         return 0
 
     try:
-        from huggingface_hub import snapshot_download
+        from huggingface_hub import HfApi, snapshot_download
     except ImportError as error:
         raise SystemExit("Install first: pip install -r jarvis/requirements-huggingface.txt") from error
 
+    api = HfApi()
+    requested_revisions = {"intent": args.intent_revision, "reasoning": args.reasoning_revision}
     args.directory.mkdir(parents=True, exist_ok=True)
     manifest_path = args.directory / "manifest.json"
     manifest = {"installed_at": time.time(), "profile": args.profile, "models": {}}
@@ -86,10 +92,14 @@ def main() -> int:
     for role in roles:
         repo_id = configured[role]
         destination = args.directory / role
-        print(f"\nInstalling {role} brain: {repo_id}")
-        resolved = snapshot_download(repo_id=repo_id, local_dir=destination)
+        revision = requested_revisions[role] or api.model_info(repo_id).sha
+        if not revision:
+            raise RuntimeError(f"could not resolve an immutable revision for {repo_id}")
+        print(f"\nInstalling {role} brain: {repo_id}@{revision}")
+        resolved = snapshot_download(repo_id=repo_id, revision=revision, local_dir=destination)
         manifest.setdefault("models", {})[role] = {
-            "repo_id": repo_id, "path": str(destination), "resolved": resolved,
+            "repo_id": repo_id, "revision": revision,
+            "path": str(destination), "resolved": resolved,
         }
         print(f"Ready: {role}")
     manifest["logical_roles"] = {

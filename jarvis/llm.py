@@ -45,10 +45,12 @@ class HuggingFaceTransformersLLM:
     _shared_generators: Dict[tuple, Any] = {}
     _load_lock = threading.Lock()
 
-    def __init__(self, model: str, allow_download: bool = False, device: str = "auto",
-                 max_new_tokens: int = 512, purpose: str = "general") -> None:
+    def __init__(self, model: str, allow_download: bool = False, revision: str = "",
+                 device: str = "auto", max_new_tokens: int = 512,
+                 purpose: str = "general") -> None:
         self.model = model
         self.allow_download = allow_download
+        self.revision = revision
         self.device = device
         self.max_new_tokens = max_new_tokens
         self.purpose = purpose
@@ -57,7 +59,7 @@ class HuggingFaceTransformersLLM:
     def _load(self):
         if self._generator is not None:
             return self._generator
-        cache_key = (self.model, self.device, self.allow_download)
+        cache_key = (self.model, self.device, self.allow_download, self.revision)
         with self._load_lock:
             if cache_key in self._shared_generators:
                 self._generator = self._shared_generators[cache_key]
@@ -71,9 +73,18 @@ class HuggingFaceTransformersLLM:
                     "pip install -r jarvis/requirements-huggingface.txt"
                 ) from error
             kwargs = {"local_files_only": not self.allow_download, "low_cpu_mem_usage": True}
+            if self.allow_download and not self.revision:
+                raise LLMError(
+                    "runtime model downloads require an immutable JARVIS_HF_REVISION; "
+                    "prefer jarvis/scripts/install_models.py"
+                )
             try:
-                tokenizer = AutoTokenizer.from_pretrained(self.model, **kwargs)
-                model = AutoModelForCausalLM.from_pretrained(self.model, torch_dtype="auto", **kwargs)
+                tokenizer = AutoTokenizer.from_pretrained(
+                    self.model, revision=self.revision or None, **kwargs,
+                )
+                model = AutoModelForCausalLM.from_pretrained(
+                    self.model, revision=self.revision or None, torch_dtype="auto", **kwargs,
+                )
                 if self.device == "auto":
                     device: Any = 0 if torch.cuda.is_available() else (
                         "mps" if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available() else -1
@@ -440,7 +451,8 @@ class RuleBasedLLM:
 
 
 def make_llm(settings: Settings) -> LLM:
-    common = {"allow_download": settings.hf_allow_download, "device": settings.hf_device}
+    common = {"allow_download": settings.hf_allow_download, "revision": settings.hf_revision,
+              "device": settings.hf_device}
     if settings.llm_mode == "local-deliberative":
         return DeliberativeLocalLLM(
             intent=HuggingFaceTransformersLLM(

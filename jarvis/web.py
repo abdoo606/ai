@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import html
+import ipaddress
 import re
+import socket
 import urllib.parse
 import urllib.request
 from html.parser import HTMLParser
@@ -55,19 +57,57 @@ def html_to_text(page: str) -> Tuple[str, str]:
     return parser.title.strip(), text
 
 
-def _get(url: str) -> str:
-    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as resp:
-        raw = resp.read(MAX_BYTES)
+def validate_web_url(url: str, allow_private: bool = False) -> str:
+    """Validate a URL and block credentials plus local/private network targets."""
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("only absolute http and https URLs are allowed")
+    if parsed.username or parsed.password:
+        raise ValueError("URLs containing credentials are not allowed")
+    if allow_private:
+        return url
+    try:
+        addresses = {info[4][0] for info in socket.getaddrinfo(parsed.hostname, parsed.port or 443)}
+    except socket.gaierror as error:
+        raise ValueError(f"could not resolve web host: {parsed.hostname}") from error
+    if not addresses:
+        raise ValueError("web host resolved to no addresses")
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if not ip.is_global:
+            raise ValueError("private, loopback, link-local, and reserved web targets are blocked")
+    return url
+
+
+class _SafeRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def __init__(self, allow_private: bool = False) -> None:
+        super().__init__()
+        self.allow_private = allow_private
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        validate_web_url(newurl, allow_private=self.allow_private)
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _get(url: str, allow_private: bool = False) -> str:
+    validate_web_url(url, allow_private=allow_private)
+    # Scheme, credentials, DNS targets, and every redirect are validated above/below.
+    req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})  # noqa: S310  # nosec B310
+    opener = urllib.request.build_opener(_SafeRedirectHandler(allow_private=allow_private))
+    with opener.open(req, timeout=TIMEOUT) as resp:
+        content_type = (resp.headers.get_content_type() or "").lower()
+        if content_type and content_type not in {"text/html", "application/xhtml+xml", "text/plain"}:
+            raise ValueError(f"unsupported web content type: {content_type}")
+        raw = resp.read(MAX_BYTES + 1)
+        if len(raw) > MAX_BYTES:
+            raise ValueError(f"web page exceeds the {MAX_BYTES}-byte limit")
         charset = resp.headers.get_content_charset() or "utf-8"
     return raw.decode(charset, errors="replace")
 
 
-def fetch_text(url: str) -> Tuple[str, str]:
-    """Download a page and return (title, text). Only http(s) URLs are allowed."""
-    if not url.startswith(("http://", "https://")):
-        raise ValueError("only http and https URLs are allowed")
-    return html_to_text(_get(url))
+def fetch_text(url: str, allow_private: bool = False) -> Tuple[str, str]:
+    """Download safe readable web text. Local/private addresses are blocked by default."""
+    return html_to_text(_get(url, allow_private=allow_private))
 
 
 class _ResultParser(HTMLParser):
