@@ -85,6 +85,7 @@ class TrialResult:
     first_sensory_spike: Optional[int]   # ms from onset, in the modality's regions
     first_motor_spike: Optional[int]     # ms from onset, in motor cortex
     response: Dict[str, int] = field(default_factory=dict)  # spikes per region in the response window
+    correct: Optional[bool] = None   # True/False when a rule is given; None if no decision
 
 
 def add_decision(brain: Brain, **kw) -> DecisionAgent:
@@ -103,11 +104,16 @@ def run_protocol(
     *,
     gap: int = 300,
     response_window: int = 150,
+    rule: Optional[Dict[str, str]] = None,
+    learn: bool = False,
 ) -> List[TrialResult]:
     """Run stimuli one after another and record each trial.
 
     Each trial starts ``gap`` ms after the previous one ends. Trials are
     independent: spikes from earlier trials are not counted.
+
+    ``rule`` maps each modality to the correct action. With ``learn=True`` the
+    decision agent gets +1 for a correct action and -1 for a wrong one.
     """
     decision = brain.agents.get("decision")
     results: List[TrialResult] = []
@@ -145,11 +151,18 @@ def run_protocol(
                     action, channel = cmd.action, cmd.channel
                     rt = cmd.tick - onset
                     break
+        correct = None
+        if rule is not None and action is not None:
+            correct = action == rule[stim.modality]
+            if learn and decision is not None:
+                decision.feedback(channel, action, 1.0 if correct else -1.0)
+        elif rule is not None:
+            correct = False
         results.append(TrialResult(
             modality=stim.modality, onset=onset, decided_action=action,
             decided_channel=channel, reaction_time=rt,
             first_sensory_spike=first_sensory, first_motor_spike=first_motor,
-            response=response,
+            response=response, correct=correct,
         ))
     return results
 

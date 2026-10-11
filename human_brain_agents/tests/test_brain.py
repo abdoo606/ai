@@ -416,3 +416,46 @@ def test_hemisphere_restricts_targets():
     brain = build_hcp_brain()
     left = targets_for(brain, Stimulus("auditory", hemisphere="L"))
     assert left and all(n.startswith("L_") for n in left)
+
+
+# --- reward learning, noise, robustness --------------------------------------
+
+def test_reward_learning_relearns_after_rule_switch():
+    mods = list(MODALITY_MODULE)
+    rule_a = {"visual": "press_1", "auditory": "press_2", "tactile": "press_3"}
+    rule_b = {"visual": "press_2", "auditory": "press_3", "tactile": "press_1"}
+    brain = build_hcp_brain()
+    seq = [Stimulus(m) for _ in range(8) for m in mods]
+    a = run_protocol(brain, seq, rule=rule_a, learn=True)
+    assert sum(r.correct for r in a) == len(a)
+    b_res = run_protocol(brain, seq, rule=rule_b, learn=True)
+    assert b_res[0].correct is False          # the old habit is wrong after the switch
+    assert sum(r.correct for r in b_res[-9:]) >= 8  # and it has been relearned by the end
+
+
+def test_feedback_moves_value_toward_reward():
+    brain = build_hcp_brain()
+    d = brain.agents["decision"]
+    before = d.q["visual"]["press_2"]
+    d.feedback("visual", "press_2", 1.0)
+    assert d.q["visual"]["press_2"] > before
+    d.feedback("visual", "press_2", -1.0)
+    d.feedback("visual", "press_2", -1.0)
+    assert d.q["visual"]["press_2"] < before
+
+
+def test_noise_is_reproducible_with_seed():
+    def spikes(seed):
+        b = build_hcp_brain(noise=0.3, seed=seed)
+        b.run(200)
+        return {n: tuple(a.spikes) for n, a in b.agents.items()}
+    s3 = spikes(3)
+    assert sum(len(v) for v in s3.values()) > 0  # noise alone drives some activity
+    assert s3 == spikes(3)
+    assert s3 != spikes(4)
+
+
+def test_decisions_survive_moderate_noise():
+    brain = build_hcp_brain(noise=0.03, seed=0)
+    res = run_protocol(brain, [Stimulus(m) for m in MODALITY_MODULE for _ in range(2)])
+    assert all(r.decided_channel == r.modality for r in res)

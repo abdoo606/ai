@@ -69,6 +69,42 @@ Each sense is reproducible (0.97–0.99 within itself) and distinct from the oth
 
 **Other checks (tests):** weak stimuli produce no decision. Stronger stimuli give faster decisions and more sensory activity. Two simultaneous senses give exactly one decision. No stimulus gives no decision. Each sense reaches its own sensory cortex first.
 
+## Reward learning, noise, and comparison with humans
+
+**Reward learning (decision agent).** Each channel keeps action values, updated with a
+reward-prediction rule (`alpha = 0.3`, reward +1 for a correct action, -1 for a wrong one).
+The decision always picks the highest-valued action, so it stays decisive.
+Start: 24 of 24 correct. After the rule is reversed, the first block is 0% correct, then the
+model relearns within about two trials per sense and reaches 100%
+(`tests/test_brain.py::test_reward_learning_relearns_after_rule_switch`).
+
+**Background noise (seeded).** Gaussian noise is added to every agent each tick.
+
+| noise (SD) | accuracy over 5 seeds | RT (ms) | missed |
+|---|---|---|---|
+| 0.00 | 100% | 9.0 ± 0.8 | 0 |
+| 0.02 | 100% | 9.0 ± 0.8 | 0 |
+| 0.05 | 100% | 9.0 ± 0.8 | 0 |
+| 0.10 | 96% (92–100% per seed) | 8.9 ± 0.8 | 2 of 60 |
+
+**Comparison with human simple-reaction-time ranges (literature, approximate):**
+
+| sense | human RT | model decision RT | model time to motor cortex |
+|---|---|---|---|
+| tactile | ~130–170 ms | 9.0 ms | 2 ms (fastest) |
+| auditory | ~140–170 ms | 8.0 ms (fastest) | 6 ms (slowest) |
+| visual | ~180–200 ms | 9.2 ms (slowest) | 4 ms |
+
+Sources for the human ranges: [1] Thompson et al. as cited in [scirp study](https://www.scirp.org/html/4-2400003_2689.htm),
+and reviews such as [HumanBenchmark](https://humanbenchmark.now/blog/auditory-vs-visual-reaction-time)
+and [Biology Insights](https://biologyinsights.com/how-fast-is-a-humans-reaction-time/). The studies disagree on whether
+auditory or tactile is fastest, so only "visual is slowest" is a robust human finding.
+
+**Mismatch to fix:** the model reaches motor cortex last from the auditory side (6 ms). In humans, auditory
+responses are typically faster than visual. The likely cause is the auditory route through this
+connectome, which is long and weak. The auditory gain (2.0) partly hides it. Fixing this properly
+means better auditory pathways, not a larger gain.
+
 ## Limits (please read)
 
 - **Auditory sensitivity was calibrated, not measured.** The auditory pathway in this connectome is weaker, with a threshold about 2–5x the visual one. The auditory gain (2.0) is a fitted parameter that equalises the senses for the comparison. Without it, auditory trials were missed when they followed visual trials, because prior activity suppresses them. The result is "which sense responds", not "how easily each is driven".

@@ -16,6 +16,7 @@ Time advances in discrete ticks (1 tick = 1 ms of model time).
 
 from __future__ import annotations
 
+import random
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
@@ -145,6 +146,8 @@ class Brain:
         neuromodulated_learning: float = 0.5,
         modulator_decay: float = 0.995,
         global_inhibition: float = 0.5,
+        noise: float = 0.0,
+        seed: Optional[int] = None,
     ) -> None:
         self.agents: Dict[str, Agent] = {}
         self.out_edges: Dict[str, Dict[str, Edge]] = defaultdict(dict)
@@ -160,6 +163,10 @@ class Brain:
         self.inhibition_decay = 0.9        # time constant of the inhibitory pool
         self._inhibitory_trace = 0.0
         self.spike_counts: List[int] = []  # total spikes per tick (index = tick)
+        # Background noise: each agent gets a random current every tick, with
+        # standard deviation ``noise``. A seed makes runs repeatable.
+        self.noise = noise
+        self._rng = random.Random(seed)
         self.stdp_window = stdp_window
         self.ltp_rate = ltp_rate
         self.ltd_rate = ltd_rate
@@ -292,6 +299,8 @@ class Brain:
             for msg in inbox.get(name, []):
                 drive += agent.on_input(msg, t)
             excitability = 1.0 + self.AROUSAL_GAIN * self.modulators["arousal"]
+            if self.noise > 0:
+                drive += self._rng.gauss(0.0, self.noise)
             current = drive * agent.gain * self.global_gain * excitability - inhibition
             if agent.step(current, t):
                 fired.append(name)

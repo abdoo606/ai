@@ -49,6 +49,8 @@ class DecisionAgent(Agent):
         evidence_leak: float = 0.95,
         refractory: int = 40,
         command_strength: float = 2.0,
+        alpha: float = 0.3,
+        prior: float = 0.1,
         **kw,
     ) -> None:
         kw.setdefault("role", "decision")
@@ -63,6 +65,17 @@ class DecisionAgent(Agent):
         self.refractory = refractory
         self.command_strength = command_strength
         self.evidence: Dict[str, float] = {c: 0.0 for c in self.channels}
+        # Action values per channel. The default action starts with a small
+        # prior, so behaviour begins as designed and then follows feedback.
+        self.alpha = alpha
+        self.q: Dict[str, Dict[str, float]] = {}
+        all_actions = list(dict.fromkeys(self.actions.values()))
+        for c in self.channels:
+            default = self.actions.get(c)
+            values = {default: prior} if default is not None else {}
+            for a in all_actions:
+                values.setdefault(a, 0.0)
+            self.q[c] = values
         self.commands: List[Command] = []
         self.onsets: Dict[str, List[int]] = {}   # channel -> stimulus onsets (set by protocol)
         self._hold_until = -1
@@ -88,8 +101,18 @@ class DecisionAgent(Agent):
             self._commit(best, tick)
         return 0.0
 
+    def choose(self, channel: str) -> str:
+        """Action with the highest learned value for this channel."""
+        values = self.q[channel]
+        return max(values, key=lambda a: values[a])
+
+    def feedback(self, channel: str, action: str, reward: float) -> None:
+        """Reinforce the action taken for a channel (reward-prediction update)."""
+        q = self.q[channel]
+        q[action] += self.alpha * (reward - q[action])
+
     def _commit(self, channel: str, tick: int) -> None:
-        action = self.actions.get(channel, "none")
+        action = self.choose(channel)
         self.commands.append(Command(tick=tick, channel=channel, action=action, reaction_time=-1))
         if self.motor_targets:
             self.brain.inject(self.motor_targets, self.command_strength, at=tick + 1)

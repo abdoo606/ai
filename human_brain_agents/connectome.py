@@ -46,6 +46,8 @@ def build_hcp_brain(
     extras: bool = True,
     data_dir: Path = DATA_DIR,
     brain: Optional[Brain] = None,
+    noise: float = 0.0,
+    seed: Optional[int] = None,
 ) -> Brain:
     """Build one agent per region and wire them with the connectome.
 
@@ -62,7 +64,7 @@ def build_hcp_brain(
     keep_idx = [i for i, l in enumerate(all_labels) if not is_removed(l)]
     labels = [all_labels[i] for i in keep_idx]
     sc = [[all_sc[i][j] for j in keep_idx] for i in keep_idx]
-    brain = brain or Brain()
+    brain = brain or Brain(noise=noise, seed=seed)
     for label in labels:
         brain.add_agent(make_agent(label))
 
