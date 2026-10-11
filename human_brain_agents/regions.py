@@ -15,7 +15,8 @@ Some modules have their own agent behaviour:
 
 from __future__ import annotations
 
-from typing import Dict, Set, Tuple
+import bisect
+from typing import Dict, Optional, Set, Tuple
 
 from .core import Agent, Message
 
@@ -51,7 +52,7 @@ class SalienceAgent(Agent):
 
     def on_fire(self, tick: int) -> None:
         if self.brain is not None:
-            self.brain.raise_modulator("arousal", 0.1)
+            self.brain.raise_modulator("arousal", 0.02)
 
 
 class ControlAgent(Agent):
@@ -157,3 +158,107 @@ def make_agent(label: str, **kw) -> Agent:
     else:
         cls = Agent
     return cls(label, role=region, module=module, **kw)
+
+
+# --- hierarchy: which way signals flow between modules ----------------------
+# Lower level = earlier in processing (sensory). Higher = later (motor).
+# Connections go forward (low -> high) at full strength and feedback
+# (high -> low) at a reduced strength. Same-level connections are symmetric.
+MODULE_LEVEL: Dict[str, float] = {
+    "visual": 0.0,
+    "auditory": 0.0,
+    "somatosensory": 0.0,
+    "thalamus": 1.0,
+    "association": 2.0,
+    "memory": 2.0,
+    "emotion": 3.0,
+    "striatum": 3.0,
+    "control": 4.0,
+    "motor": 5.0,
+    "cerebellum": 5.0,
+}
+
+
+def level_of(module: str) -> float:
+    return MODULE_LEVEL.get(module, MODULE_LEVEL["association"])
+
+
+class CerebellumAgent(Agent):
+    """Programmatic cerebellum: calibrates motor gain against a target rate.
+
+    Every ``window`` ms, while the sensory system is active, it compares the
+    motor output rate with ``target_rate`` and nudges each motor agent's gain.
+    Gain stays within ``gain_bounds``. The spiking connections still run too.
+    """
+
+    def __init__(self, name: str, *, target_rate: float = 0.03, window: int = 100,
+                 learning_rate: float = 0.05, gain_bounds=(0.5, 2.0), **kw) -> None:
+        super().__init__(name, **kw)
+        self.target_rate = target_rate        # spikes per ms per motor agent
+        self.window = window
+        self.learning_rate = learning_rate
+        self.gain_bounds = gain_bounds
+        self.adjustments: list = []           # (tick, error) log
+
+    def on_tick(self, tick: int) -> float:
+        if self.brain is None or tick == 0 or tick % self.window != 0:
+            return 0.0
+        brain = self.brain
+        start = tick - self.window
+        motors = [a for a in brain.agents.values() if a.module == "motor"]
+        sensors = [a for a in brain.agents.values()
+                   if a.module in ("visual", "auditory", "somatosensory")]
+        sensory = sum(_count(a.spikes, start, tick) for a in sensors)
+        if sensory == 0 or not motors:
+            return 0.0  # no task running, nothing to calibrate
+        rate = sum(_count(m.spikes, start, tick) for m in motors) / (self.window * len(motors))
+        error = self.target_rate - rate
+        self.adjustments.append((tick, error))
+        lo, hi = self.gain_bounds
+        for m in motors:
+            m.gain = min(hi, max(lo, m.gain + self.learning_rate * error / self.target_rate))
+        return 0.0
+
+
+class BrainstemAgent(Agent):
+    """Programmatic brainstem: keeps the whole brain inside a safe activity range.
+
+    * Activity guard: if brain-wide firing rate goes above ``max_rate``, pooled
+      inhibition is raised (up to ``max_inhibition_factor`` times its base).
+      It relaxes back when activity falls.
+    * Arousal floor: keeps a small tonic arousal, like the brainstem's
+      wake-promoting nuclei, so the brain is never fully silent when awake.
+    """
+
+    def __init__(self, name: str, *, max_rate: float = 2.0, window: int = 20,
+                 max_inhibition_factor: float = 4.0, tonic_arousal: float = 0.05, **kw) -> None:
+        super().__init__(name, **kw)
+        self.max_rate = max_rate                       # spikes per ms, whole brain
+        self.window = window
+        self.max_inhibition_factor = max_inhibition_factor
+        self.tonic_arousal = tonic_arousal
+        self._base_inhibition: Optional[float] = None
+
+    def on_tick(self, tick: int) -> float:
+        brain = self.brain
+        if brain is None:
+            return 0.0
+        if self._base_inhibition is None:
+            self._base_inhibition = brain.global_inhibition
+        start = max(0, tick - self.window)
+        spikes = sum(brain.spike_counts[start:tick])
+        rate = spikes / max(1, tick - start)
+        base = self._base_inhibition
+        cap = base * self.max_inhibition_factor
+        if rate > self.max_rate:
+            brain.global_inhibition = min(cap, brain.global_inhibition + base * 0.1)
+        else:
+            brain.global_inhibition = max(base, brain.global_inhibition - base * 0.05)
+        if brain.modulators["arousal"] < self.tonic_arousal:
+            brain.raise_modulator("arousal", self.tonic_arousal - brain.modulators["arousal"])
+        return 0.0
+
+
+def _count(spikes: list, start: int, end: int) -> int:
+    """Number of spike times in [start, end). Spike lists are sorted."""
+    return bisect.bisect_left(spikes, end) - bisect.bisect_left(spikes, start)

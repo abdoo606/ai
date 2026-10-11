@@ -6,7 +6,15 @@ from pathlib import Path
 from typing import List, Optional, Sequence, Tuple
 
 from .core import Agent, Brain
-from .regions import HomeostatAgent, make_agent, parse_label
+from .regions import (
+    BrainstemAgent,
+    CerebellumAgent,
+    HomeostatAgent,
+    level_of,
+    make_agent,
+    module_of,
+    parse_label,
+)
 
 DATA_DIR = Path(__file__).resolve().parent / "data"
 MATRIX_FILE = "hcp_structural_connectome_82.csv"
@@ -32,17 +40,22 @@ def build_hcp_brain(
     delay: int = 2,
     keep_fraction: float = 0.2,
     plastic: bool = True,
+    directed: bool = True,
+    feedback_factor: float = 0.5,
     extras: bool = True,
     data_dir: Path = DATA_DIR,
     brain: Optional[Brain] = None,
 ) -> Brain:
     """Build one agent per region and wire them with the connectome.
 
-    Weights are scaled so the strongest connection equals ``coupling``.
-    ``keep_fraction`` keeps only the strongest share of each region's connections.
-    The matrix is undirected, so both directions get the same weight.
-    Extra agents (cerebellum, hypothalamus) are not in the connectome and are
-    wired by hand.
+    * Weights are scaled so the strongest connection equals ``coupling``.
+    * The HCP matrix is undirected. With ``directed=True``, each pair gets a
+      direction from the processing hierarchy (see ``MODULE_LEVEL``):
+      forward (sensory -> motor) at full strength, feedback at
+      ``feedback_factor`` times that. Same-level pairs stay symmetric.
+    * ``keep_fraction`` keeps the strongest share of each region's own connections.
+    * Extras not in the connectome: cerebellum (motor calibration) and
+      brainstem (activity guard), plus the hypothalamus (energy homeostasis).
     """
     labels, sc = load_structural(data_dir)
     brain = brain or Brain()
@@ -50,9 +63,8 @@ def build_hcp_brain(
         brain.add_agent(make_agent(label))
 
     peak = max(max(row) for row in sc)
+    levels = {l: level_of(module_of(parse_label(l)[1])) for l in labels}
     for i, src in enumerate(labels):
-        # Keep the strongest ``keep_fraction`` of each region's own connections,
-        # so no region is cut off from the network entirely.
         row = sorted((v for v in sc[i] if v > 0), reverse=True)
         keep = max(1, round(keep_fraction * len(row))) if row else 0
         cutoff = row[keep - 1] if row else 0.0
@@ -60,6 +72,8 @@ def build_hcp_brain(
             if i == j or sc[i][j] <= 0 or sc[i][j] < cutoff:
                 continue
             w = coupling * sc[i][j] / peak
+            if directed and levels[src] > levels[dst]:
+                w *= feedback_factor
             brain.connect(src, dst, w, delay=delay, plastic=plastic)
 
     if extras:
@@ -68,12 +82,13 @@ def build_hcp_brain(
 
 
 def add_extras(brain: Brain, labels: Sequence[str]) -> None:
-    """Add regions that are not in the connectome: cerebellum and hypothalamus."""
-    brain.add_agent(Agent("cerebellum", role="cerebellum", module="cerebellum"))
+    """Add regions that are not in the connectome."""
+    brain.add_agent(CerebellumAgent("cerebellum", role="cerebellum", module="cerebellum"))
+    brain.add_agent(BrainstemAgent("brainstem", role="brainstem", module="brainstem"))
     brain.add_agent(HomeostatAgent("hypothalamus", role="hypothalamus",
                                    module="homeostasis", energy_budget=500.0))
     motor = [l for l in labels if parse_label(l)[1] == "precentral"]
     for m in motor:
-        # Motor cortex drives the cerebellum; the cerebellum corrects it back.
+        # Motor cortex drives the cerebellum; the cerebellum inhibits it back.
         brain.connect(m, "cerebellum", 2.0, delay=2)
         brain.connect("cerebellum", m, -0.3, delay=3)

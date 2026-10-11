@@ -11,6 +11,7 @@ It shows:
 
 import argparse
 import csv
+from pathlib import Path
 
 from human_brain_agents import build_hcp_brain
 
@@ -29,6 +30,8 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--trials", type=int, default=20)
     parser.add_argument("--csv", help="write a spike raster (agent, module, tick)")
+    parser.add_argument("--figures", default="human_brain_agents/figures",
+                        help="folder for heatmap, graph and GIF ('' to skip)")
     args = parser.parse_args()
 
     # 1. One stimulus
@@ -58,6 +61,20 @@ def main() -> None:
 
     # 3. Energy and homeostasis
     print(f"\nMean energy left: {brain.mean_energy_fraction():.3%}   global gain: {brain.global_gain:.2f}")
+
+    if args.figures:
+        from human_brain_agents.viz import activity_gif, activity_heatmap, graph_snapshot
+
+        out = Path(args.figures)
+        demo = build_hcp_brain()
+        demo.learning = True
+        for _ in range(3):
+            stimulate(demo)
+            demo.run(90)
+        print("\nFigures:")
+        print("  " + str(activity_heatmap(demo, out / "activity_heatmap.png")))
+        print("  " + str(graph_snapshot(demo, 0, 30, out / "graph_0_30ms.png")))
+        print("  " + str(activity_gif(demo, out / "activity.gif", window=10, step=10)))
 
     if args.csv:
         with open(args.csv, "w", newline="") as f:

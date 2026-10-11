@@ -138,11 +138,13 @@ class Brain:
         self,
         *,
         stdp_window: int = 10,
-        ltp_rate: float = 0.02,
+        ltp_rate: float = 0.05,
         ltd_rate: float = 0.02,
-        w_max_factor: float = 1.3,
+        w_max_factor: float = 3.0,
+        synaptic_slack: float = 0.75,
+        neuromodulated_learning: float = 0.5,
         modulator_decay: float = 0.995,
-        global_inhibition: float = 1.0,
+        global_inhibition: float = 0.5,
     ) -> None:
         self.agents: Dict[str, Agent] = {}
         self.out_edges: Dict[str, Dict[str, Edge]] = defaultdict(dict)
@@ -157,10 +159,18 @@ class Brain:
         self.global_inhibition = global_inhibition
         self.inhibition_decay = 0.9        # time constant of the inhibitory pool
         self._inhibitory_trace = 0.0
+        self.spike_counts: List[int] = []  # total spikes per tick (index = tick)
         self.stdp_window = stdp_window
         self.ltp_rate = ltp_rate
         self.ltd_rate = ltd_rate
         self.w_max_factor = w_max_factor
+        # Synaptic scaling: the summed plastic input to a region may exceed its
+        # baseline sum by at most this fraction. Strengthening one input then
+        # takes share from the others, which keeps learning stable.
+        self.synaptic_slack = synaptic_slack
+        # Attention and arousal gate plasticity, as neuromodulators do in the
+        # brain: learning rate is multiplied by 1 + neuromodulated_learning * (attention + arousal).
+        self.neuromodulated_learning = neuromodulated_learning
         self.learning: bool = True
         self._queue: Dict[int, List[Tuple[str, Message]]] = defaultdict(list)
 
@@ -211,6 +221,10 @@ class Brain:
     def raise_modulator(self, name: str, amount: float) -> None:
         self.modulators[name] = max(0.0, min(1.0, self.modulators[name] + amount))
 
+    def learning_rate_factor(self) -> float:
+        m = self.modulators
+        return 1.0 + self.neuromodulated_learning * (m["attention"] + m["arousal"])
+
     def _learn(self, post: Agent, tick: int) -> None:
         """Spike-timing plasticity on plastic excitatory inputs of ``post``.
 
@@ -218,6 +232,7 @@ class Brain:
           ``w_max_factor * base``.
         * otherwise                      -> weak depression back toward ``base``.
         """
+        gain = self.learning_rate_factor()
         for pre_name in self.in_sources[post.name]:
             edge = self.out_edges[pre_name][post.name]
             if not edge.plastic or edge.base <= 0:
@@ -226,9 +241,23 @@ class Brain:
             dt = tick - pre.last_spike
             if 0 <= dt <= self.stdp_window:
                 cap = self.w_max_factor * edge.base
-                edge.weight += self.ltp_rate * (cap - edge.weight)
+                edge.weight += self.ltp_rate * gain * (cap - edge.weight)
             else:
                 edge.weight += self.ltd_rate * (edge.base - edge.weight)
+        self._scale_inputs(post)
+
+    def _scale_inputs(self, post: Agent) -> None:
+        plastic = [self.out_edges[s][post.name] for s in self.in_sources[post.name]
+                   if self.out_edges[s][post.name].plastic
+                   and self.out_edges[s][post.name].base > 0]
+        if not plastic:
+            return
+        total = sum(e.weight for e in plastic)
+        limit = (1.0 + self.synaptic_slack) * sum(e.base for e in plastic)
+        if total > limit:
+            factor = limit / total
+            for e in plastic:
+                e.weight *= factor
 
     def _emit(self, agent: Agent, tick: int) -> None:
         for dst, edge in self.out_edges.get(agent.name, {}).items():
@@ -262,6 +291,7 @@ class Brain:
                 agent.on_fire(t)
 
         self._inhibitory_trace = self._inhibitory_trace * self.inhibition_decay + len(fired)
+        self.spike_counts.append(len(fired))
         self.tick += 1
         return fired
 

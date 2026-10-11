@@ -36,8 +36,9 @@ def test_connectome_data_is_valid():
 
 def test_build_has_region_agents_and_extras():
     brain = build_hcp_brain()
-    assert len(brain.agents) == 84
+    assert len(brain.agents) == 85
     assert "cerebellum" in brain.agents
+    assert "brainstem" in brain.agents
     assert "hypothalamus" in brain.agents
     labels, _ = load_structural()
     # Every connectome region keeps at least one outgoing connection.
@@ -207,3 +208,111 @@ def test_inhibition_reduces_firing():
             b.step()
         return b.agents["dst"].spike_count
     assert run(-1.0) < run(1.0)
+
+
+# --- directed hierarchy ------------------------------------------------------
+
+def test_forward_connections_stronger_than_feedback():
+    from human_brain_agents.regions import level_of
+    brain = build_hcp_brain(directed=True, feedback_factor=0.5)
+    forward, feedback = [], []
+    for src, targets in brain.out_edges.items():
+        for dst, e in targets.items():
+            if src.endswith("cerebellum") or dst in ("cerebellum", "brainstem", "hypothalamus"):
+                continue
+            ls = level_of(brain.agents[src].module)
+            ld = level_of(brain.agents[dst].module)
+            if ls < ld:
+                forward.append(e.weight)
+            elif ls > ld:
+                feedback.append(e.weight)
+    assert forward and feedback
+    assert max(feedback) <= 0.5 * max(forward) + 1e-9
+
+
+def test_undirected_build_is_symmetric_in_strength():
+    brain = build_hcp_brain(directed=False)
+    for src, targets in brain.out_edges.items():
+        for dst, e in targets.items():
+            if dst in ("cerebellum", "brainstem", "hypothalamus") or src in ("cerebellum", "brainstem", "hypothalamus"):
+                continue
+            if src in brain.out_edges[dst]:
+                assert brain.out_edges[dst][src].weight == pytest.approx(e.weight)
+
+
+def test_sensory_to_motor_path_exists():
+    brain = build_hcp_brain()
+    seen = {"L_lateraloccipital"}
+    frontier = ["L_lateraloccipital"]
+    while frontier:
+        nxt = []
+        for n in frontier:
+            for d in brain.out_edges[n]:
+                if d not in seen:
+                    seen.add(d)
+                    nxt.append(d)
+        frontier = nxt
+    assert any(brain.agents[n].module == "motor" for n in seen)
+
+
+# --- learning bounds ---------------------------------------------------------
+
+def test_synaptic_scaling_keeps_input_totals_bounded():
+    brain = build_hcp_brain()
+    brain.learning = True
+    for _ in range(15):
+        stimulate(brain, ms=10)
+        brain.run(90)
+    for post in brain.agents:
+        plastic = [brain.out_edges[s][post] for s in brain.in_sources[post]
+                   if brain.out_edges[s][post].plastic and brain.out_edges[s][post].base > 0]
+        if not plastic:
+            continue
+        total = sum(e.weight for e in plastic)
+        limit = (1 + brain.synaptic_slack) * sum(e.base for e in plastic)
+        assert total <= limit + 1e-9
+
+
+def test_neuromodulators_gate_learning_rate():
+    brain = build_hcp_brain()
+    base = brain.learning_rate_factor()
+    brain.modulators["attention"] = 1.0
+    assert brain.learning_rate_factor() > base
+
+
+# --- cerebellum and brainstem ------------------------------------------------
+
+def test_cerebellum_calibrates_motor_gain_within_bounds():
+    brain = build_hcp_brain()
+    brain.learning = True
+    for _ in range(20):
+        stimulate(brain, ms=10)
+        brain.run(90)
+    lo, hi = brain.agents["cerebellum"].gain_bounds
+    for name in ("L_precentral", "R_precentral"):
+        assert lo <= brain.agents[name].gain <= hi
+    assert brain.agents["cerebellum"].adjustments  # it actually acted
+
+
+def test_brainstem_limits_inhibition_and_keeps_arousal_floor():
+    brain = build_hcp_brain()
+    bs = brain.agents["brainstem"]
+    bs.max_rate = 0.0  # any activity counts as too much
+    base = brain.global_inhibition
+    stimulate(brain, ms=10)
+    brain.run(60)
+    assert brain.global_inhibition <= base * bs.max_inhibition_factor + 1e-9
+    assert brain.global_inhibition > base
+    assert brain.modulators["arousal"] >= bs.tonic_arousal - 1e-9
+
+
+# --- visualisation -----------------------------------------------------------
+
+def test_visualisation_writes_files(tmp_path):
+    pytest.importorskip("matplotlib")
+    from human_brain_agents.viz import activity_heatmap, graph_snapshot
+    brain = build_hcp_brain()
+    stimulate(brain, ms=10)
+    brain.run(60)
+    assert activity_heatmap(brain, tmp_path / "h.png").exists()
+    assert graph_snapshot(brain, 0, 40, tmp_path / "g.png").exists()
