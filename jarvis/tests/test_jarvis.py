@@ -14,6 +14,7 @@ from jarvis.agent import Assistant
 from jarvis.config import load_settings
 from jarvis.knowledge import KnowledgeBase, chunk_text, normalize_text
 from jarvis.llm import HuggingFaceTransformersLLM, LLMError, RuleBasedLLM, make_llm
+from jarvis.research import DeepResearcher, canonical_url, curriculum_queries, discover_subtopics
 from jarvis.tools import build_registry
 
 
@@ -203,11 +204,54 @@ def test_fetch_text_rejects_non_http_urls():
         web.fetch_text("file:///etc/passwd")
 
 
+# ---------- autonomous deep research --------------------------------------
+
+def test_curriculum_is_broad_and_multilingual():
+    english = curriculum_queries("physics")
+    arabic = curriculum_queries("الفيزياء")
+    assert len(english) >= 10 and any("current research" in query for query in english)
+    assert len(arabic) >= 10 and any("أحدث الأبحاث" in query for query in arabic)
+
+
+def test_research_url_cleanup_and_subtopic_discovery():
+    assert canonical_url("HTTPS://Example.org/x/?utm_source=a&ok=1#part") == "https://example.org/x?ok=1"
+    results = [
+        {"title": "Quantum mechanics and particles", "snippet": "Quantum theory"},
+        {"title": "Quantum mechanics experiments", "snippet": "Quantum particles"},
+    ]
+    assert "Quantum" in discover_subtopics("physics", results)
+
+
+def test_deep_research_maps_queries_deduplicates_and_stores(kb):
+    pages = {
+        "https://learn.example/mechanics": ("Classical mechanics", "Mechanics explains motion force and energy. " * 25),
+        "https://learn.example/quantum": ("Quantum mechanics", "Quantum theory explains particles measurement and uncertainty. " * 25),
+    }
+
+    def search(query, limit=5):
+        return [
+            {"url": "https://learn.example/mechanics?utm_source=test", "title": "Classical mechanics", "snippet": "mechanics motion"},
+            {"url": "https://learn.example/quantum", "title": "Quantum mechanics", "snippet": "mechanics particles"},
+        ][:limit]
+
+    def fetch(url):
+        return pages[url]
+
+    report = DeepResearcher(kb, search=search, fetch=fetch).learn(
+        "physics", max_sources=2, depth=2, results_per_query=2
+    )
+    assert report.stored_sources == 2
+    assert report.stored_chunks >= 2
+    assert len(report.queries) >= 1
+    assert kb.search("uncertainty", topic="physics")
+    assert "stored 2 source(s)" in report.render()
+
+
 # ---------- tools ----------------------------------------------------------
 
 def test_registry_has_expected_tools(kb, settings):
     names = set(build_registry(kb, settings).tools)
-    assert {"get_time", "web_search", "fetch_url", "learn_topic", "recall",
+    assert {"get_time", "web_search", "fetch_url", "learn_topic", "learn_deep", "recall",
             "list_sources", "summarize_topic", "list_topics", "forget_topic",
             "read_file", "write_file", "list_files"} <= names
     assert "run_command" not in names  # shell is off by default
@@ -271,8 +315,9 @@ def test_learn_topic_skips_failing_pages(kb, settings, fake_web, monkeypatch):
 # ---------- rule-based intents --------------------------------------------
 
 @pytest.mark.parametrize("text,expected", [
-    ("learn quantum computing", ("learn_topic", {"topic": "quantum computing"})),
-    ("تعلم الحوسبة الكمومية", ("learn_topic", {"topic": "الحوسبة الكمومية"})),
+    ("learn quantum computing", ("learn_deep", {"topic": "quantum computing"})),
+    ("تعلم الحوسبة الكمومية", ("learn_deep", {"topic": "الحوسبة الكمومية"})),
+    ("اتعلم الفيزياء", ("learn_deep", {"topic": "الفيزياء"})),
     ("recall what is a qubit", ("recall", {"query": "what is a qubit"})),
     ("ماذا تعرف عن الكيوبت", ("recall", {"query": "الكيوبت"})),
     ("what time is it", ("get_time", {})),
@@ -366,18 +411,17 @@ def test_agent_reports_llm_failure_gracefully():
 def test_end_to_end_offline_learn_then_recall(settings, fake_web):
     kb = KnowledgeBase(settings.db_path)
     bot = Assistant(RuleBasedLLM(), build_registry(kb, settings))
-    assert "learned" in bot.ask("learn quantum")
+    assert "learned" in bot.ask("quick learn quantum")
     assert "superposition" in bot.ask("recall superposition")
     kb.close()
 
 
-def test_settings_default_to_offline_mode(tmp_path):
-    s = load_settings({"JARVIS_HOME": str(tmp_path)})
-    assert s.llm_mode == "offline-rules" and s.allow_shell is False
-    # A key alone does not switch backends: the network model needs an explicit opt-in.
-    assert load_settings({"JARVIS_LLM_API_KEY": "k"}).llm_mode == "offline-rules"
-    on = load_settings({"JARVIS_BACKEND": "openai", "JARVIS_LLM_API_KEY": "k"})
-    assert on.llm_mode == "openai-compatible"
+def test_settings_default_to_offline_and_has_no_api_configuration(tmp_path):
+    settings = load_settings({"JARVIS_HOME": str(tmp_path), "JARVIS_LLM_API_KEY": "ignored"})
+    assert settings.llm_mode == "offline-rules" and settings.allow_shell is False
+    assert not hasattr(settings, "llm_api_key")
+    # Hosted backend names cannot activate a network model.
+    assert load_settings({"JARVIS_BACKEND": "openai"}).llm_mode == "offline-rules"
 
 
 def test_huggingface_backend_is_opt_in_local_and_lazy(tmp_path):

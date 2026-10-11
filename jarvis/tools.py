@@ -18,6 +18,7 @@ from typing import Any, Callable, Dict, List, Optional
 from . import web
 from .config import Settings
 from .knowledge import KnowledgeBase
+from .research import DeepResearcher
 
 MAX_RESULT_CHARS = 4000
 
@@ -134,11 +135,31 @@ def build_registry(kb: KnowledgeBase, settings: Settings) -> ToolRegistry:
 
     reg.register(Tool(
         "learn_topic",
-        "Learn a topic: search the web, read sources and store them in memory for later answers.",
+        "Quick learning pass: read a few web sources about one topic.",
         _obj({"topic": {"type": "string"}, "sources": {"type": "integer", "default": 3},
               "query": {"type": "string", "description": "optional search query if different from topic"}},
              ["topic"]),
         learn_topic,
+    ))
+
+    def learn_deep(topic: str, max_sources: int = 24, depth: int = 2,
+                   results_per_query: int = 5) -> str:
+        """Map a field broadly, expand subtopics, and archive readable sources."""
+        researcher = DeepResearcher(kb, search=web.search, fetch=web.fetch_text)
+        report = researcher.learn(topic, max_sources=int(max_sources), depth=int(depth),
+                                  results_per_query=int(results_per_query))
+        return report.render()
+
+    reg.register(Tool(
+        "learn_deep",
+        "Autonomously study a broad field: build a curriculum, search its branches, read and "
+        "deduplicate sources, discover subtopics, and save everything locally with citations.",
+        _obj({"topic": {"type": "string"},
+              "max_sources": {"type": "integer", "default": 24, "maximum": 100},
+              "depth": {"type": "integer", "default": 2, "maximum": 4},
+              "results_per_query": {"type": "integer", "default": 5, "maximum": 10}},
+             ["topic"]),
+        learn_deep,
     ))
 
     def recall(query: str, topic: Optional[str] = None, limit: int = 8,

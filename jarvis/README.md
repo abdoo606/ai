@@ -6,7 +6,7 @@ It is standalone: the default needs no API key and no external model. Everything
 
 ## Features
 
-- **Learn any topic**: `learn <topic>` searches the web, reads the top pages, and stores them in a local SQLite database with full-text (BM25) indexing. Each chunk keeps its source URL.
+- **Autonomous deep learning**: `learn <topic>` / `اتعلم <موضوع>` creates a broad curriculum (fundamentals, branches, history, methods, applications, advanced work, current research, and open questions), searches every part, reads and deduplicates sources, discovers more subtopics, then archives the material locally with its URLs. Each pass is bounded and can be repeated to refresh or extend knowledge.
 - **Recall**: local extractive answering selects the most relevant sentences and cites every source; it does not invent unsupported text.
 - **Arabic retrieval**: Arabic diacritics, alef variants, and ya/alef-maqsura variants are normalized in the search index while original source text is preserved.
 - **Local open model (optional)**: Hugging Face `transformers` adds conversational reasoning and tool use without sending prompts to a service.
@@ -44,14 +44,11 @@ Transformers lazily and never downloads weights unless
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `JARVIS_BACKEND` | `offline` | `offline` needs nothing; `huggingface` runs a local open model; `openai` is optional. |
-| `JARVIS_HF_MODEL` | `HuggingFaceTB/SmolLM2-1.7B-Instruct` | Local folder or Hugging Face model ID used by the local backend. |
+| `JARVIS_BACKEND` | `offline` | `offline` uses the built-in brain; `huggingface` runs an open model locally. There is no hosted/API backend. |
+| `JARVIS_HF_MODEL` | `jarvis/models/brain` | Local model folder. A Hub model ID is accepted only when the one-time download flag is enabled. |
 | `JARVIS_HF_ALLOW_DOWNLOAD` | `0` | Model downloads are blocked by default. Set `1` only for the initial model download. |
 | `JARVIS_HF_DEVICE` | `auto` | `auto`, `cpu`, `mps`, or a CUDA device index such as `0`. |
 | `JARVIS_HF_MAX_NEW_TOKENS` | `512` | Maximum generated tokens per local-model step. |
-| `JARVIS_LLM_API_KEY` | (empty) | Used only with `JARVIS_BACKEND=openai`. Set it in your environment, never in the code. |
-| `JARVIS_LLM_BASE_URL` | `https://api.openai.com/v1` | Any OpenAI-compatible endpoint (OpenRouter, a local server, ...). |
-| `JARVIS_LLM_MODEL` | `gpt-4o-mini` | Model name. |
 | `JARVIS_HOME` | `jarvis/data` | Where the knowledge base is stored. Git-ignored. |
 | `JARVIS_WORKSPACE` | `~/jarvis_workspace` | The only folder the file tools can touch. |
 | `JARVIS_ALLOW_SHELL` | `0` | Set to `1` to let the assistant run shell commands in the workspace. |
@@ -73,22 +70,23 @@ python -m jarvis                  # interactive
 python -m jarvis "learn qubits"   # one question
 ```
 
-## API
+## Local web endpoints
 
 | Method | Path | Body / query | Returns |
 |---|---|---|---|
 | GET | `/api/status` | | LLM mode, topics, shell flag |
 | POST | `/api/chat` | `{"message": "..."}` | `{"reply": "..."}` |
 | POST | `/api/reset` | | clears the conversation |
-| POST | `/api/learn` | `{"topic": "...", "sources": 3}` | `{"result": "..."}` |
+| POST | `/api/learn` | `{"topic": "...", "max_sources": 24, "depth": 2}` | deep-research result |
 | GET | `/api/recall` | `?q=...` | `{"result": "..."}` |
 
 ## Design
 
 - `knowledge.py`: SQLite + FTS5 store (`topics`, `sources`, `chunks`), normalized multilingual indexing, BM25 retrieval, and citation-preserving extractive answers. Chunks are about 800 characters.
+- `research.py`: autonomous curriculum generation, bounded multi-pass research, URL/content deduplication, subtopic discovery, and local archiving.
 - `web.py`: standard-library HTTP, HTML-to-text, and DuckDuckGo result parsing.
 - `tools.py`: tools with JSON schemas. Output is capped at 4000 characters. Errors are returned as text, not raised.
-- `llm.py`: the zero-dependency offline router, an optional lazy-loaded Hugging Face Transformers backend with JSON tool calling, and an optional OpenAI-compatible client.
+- `llm.py`: the zero-dependency offline router and an optional lazy-loaded local Hugging Face Transformers brain with JSON tool calling. No hosted-model client exists.
 - `agent.py`: the assistant loop. It calls tools for up to 6 steps, then answers, and keeps the last 40 messages of history.
 - `server.py`: FastAPI. The UI uses relative URLs, so it works behind a preview proxy.
 
@@ -105,12 +103,13 @@ The tests use fixtures for web pages and scripted models. They need no network a
 - Files: confined to the workspace (checked after path resolution, so `..` and absolute paths are refused).
 - Shell: disabled unless `JARVIS_ALLOW_SHELL=1`. Only enable it on a machine you trust, because the model can run any command that the account can.
 - Web fetch: only `http` and `https`. Pages are capped at 2 MB.
-- Secrets: read only from the environment. The knowledge base and workspace are git-ignored.
+- No model-service credentials are accepted or stored. The knowledge base, local model weights, and workspace are git-ignored.
 
 ## Limits
 
 - The default offline mode can route commands and answer from stored sources extractively, but it is not a generative conversational model. Use the local Hugging Face backend for that.
-- The web search depends on DuckDuckGo's HTML endpoint. It can change or rate-limit.
+- Deep learning needs public websites while it is researching; answering from already archived memory works offline. Search providers and source sites can change or rate-limit.
+- No finite system can literally download “everything in the world.” Jarvis uses explicit source/depth budgets, reports what it covered, and can run more passes.
 - Learned text is stored as-is. Check important answers against the cited sources.
 - Not yet built: a desktop GUI, device and smart-home control, and live voice in the terminal.
 

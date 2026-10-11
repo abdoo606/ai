@@ -1,10 +1,8 @@
-"""Jarvis: a personal assistant with tools, memory and web learning.
+"""Jarvis: an API-free personal assistant with local tools, memory, and models.
 
-Standalone by default: no API key, no network model. An OpenAI-compatible backend is optional (JARVIS_BACKEND=openai).
+The default brain is built in. An optional open model can run entirely on this
+machine through Hugging Face Transformers; hosted-model clients are not part of
+this package.
 """
 
-from .agent import Assistant
-from .config import Settings, load_settings
-from .knowledge import KnowledgeBase, chunk_text
-
-__all__ = ["Assistant", "KnowledgeBase", "Settings", "chunk_text", "load_settings"]
+__version__ = "0.3.0"

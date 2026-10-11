@@ -21,7 +21,8 @@ class ChatIn(BaseModel):
 
 class LearnIn(BaseModel):
     topic: str
-    sources: int = 3
+    max_sources: int = 24
+    depth: int = 2
 
 
 def create_app(assistant: Assistant | None = None) -> FastAPI:
@@ -36,11 +37,7 @@ def create_app(assistant: Assistant | None = None) -> FastAPI:
 
     @app.get("/api/status")
     def status():
-        model = None
-        if settings.llm_mode == "openai-compatible":
-            model = settings.llm_model
-        elif settings.llm_mode == "huggingface-local":
-            model = settings.hf_model
+        model = settings.hf_model if settings.llm_mode == "huggingface-local" else None
         return {"llm": settings.llm_mode, "model": model,
                 "topics": bot.tools.call("list_topics", {}),
                 "shell_enabled": settings.allow_shell}
@@ -61,7 +58,9 @@ def create_app(assistant: Assistant | None = None) -> FastAPI:
         if not body.topic.strip():
             raise HTTPException(status_code=400, detail="topic is empty")
         with lock:
-            return {"result": bot.tools.call("learn_topic", {"topic": body.topic, "sources": body.sources})}
+            return {"result": bot.tools.call("learn_deep", {
+                "topic": body.topic, "max_sources": body.max_sources, "depth": body.depth
+            })}
 
     @app.get("/api/recall")
     def recall(q: str):

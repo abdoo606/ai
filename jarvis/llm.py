@@ -1,18 +1,16 @@
 """Language-model backends for Jarvis.
 
-Three backends share ``chat(messages, tools) -> reply``:
+Two fully local backends share ``chat(messages, tools) -> reply``:
 
 * ``RuleBasedLLM`` is the zero-dependency, always-offline default.
 * ``HuggingFaceTransformersLLM`` runs an open model locally through the
   Hugging Face Transformers library. It is lazy-loaded and needs no API key.
-* ``OpenAICompatibleLLM`` is retained as an explicitly selected remote option.
 """
 
 from __future__ import annotations
 
 import json
 import re
-import urllib.request
 from typing import Any, Dict, List, Optional, Protocol
 
 from .config import Settings
@@ -25,45 +23,6 @@ class LLM(Protocol):
 
 class LLMError(RuntimeError):
     pass
-
-
-class OpenAICompatibleLLM:
-    def __init__(self, api_key: str, base_url: str, model: str, timeout: int = 60) -> None:
-        self.api_key = api_key
-        self.base_url = base_url
-        self.model = model
-        self.timeout = timeout
-
-    def chat(self, messages: List[dict], tools: Optional[List[dict]] = None) -> Dict[str, Any]:
-        body: Dict[str, Any] = {"model": self.model, "messages": messages}
-        if tools:
-            body["tools"] = tools
-            body["tool_choice"] = "auto"
-        req = urllib.request.Request(
-            self.base_url + "/chat/completions",
-            data=json.dumps(body).encode("utf-8"),
-            headers={"Content-Type": "application/json", "Authorization": f"Bearer {self.api_key}"},
-            method="POST",
-        )
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout) as response:
-                data = json.loads(response.read().decode("utf-8"))
-        except Exception as error:
-            raise LLMError(f"model request failed: {error}") from error
-        try:
-            message = data["choices"][0]["message"]
-        except (KeyError, IndexError) as error:
-            raise LLMError(f"unexpected response: {str(data)[:200]}") from error
-        calls = []
-        for tool_call in message.get("tool_calls") or []:
-            function = tool_call.get("function", {})
-            calls.append({
-                "id": tool_call.get("id", ""),
-                "name": function.get("name", ""),
-                "arguments": function.get("arguments", "{}"),
-                "raw": tool_call,
-            })
-        return {"content": message.get("content"), "tool_calls": calls, "raw_message": message}
 
 
 class HuggingFaceTransformersLLM:
@@ -212,7 +171,8 @@ class RuleBasedLLM:
         if not low:
             return None
         patterns = [
-            (r"^(learn|study|تعلم|ادرس)\s+(.+)$", "learn_topic", "topic"),
+            (r"^(learn|study|تعلم|اتعلم|ادرس)\s+(.+)$", "learn_deep", "topic"),
+            (r"^(quick learn|تعلم بسرعه)\s+(.+)$", "learn_topic", "topic"),
             (r"^(recall|search memory|استرجع|ابحث في معلوماتي)\s+(.+)$", "recall", "query"),
             (r"^(what do you know about|ماذا تعرف عن|ماذا تعرف)\s+(.+)$", "recall", "query"),
             (r"^(summarize|summary of|لخص|ملخص)\s+(.+)$", "summarize_topic", "topic"),
@@ -242,7 +202,7 @@ class RuleBasedLLM:
     def _help() -> str:
         return (
             "Offline mode. Commands I understand:\n"
-            "- learn <topic> / تعلم <موضوع>: read and remember sources\n"
+            "- learn <topic> / اتعلم <موضوع>: map the field deeply and archive its sources\n"
             "- recall <question> / استرجع <سؤال>: concise answer with citations\n"
             "- summarize <topic> / لخص <موضوع>\n"
             "- sources for <topic> / مصادر <موضوع>\n"
@@ -253,8 +213,6 @@ class RuleBasedLLM:
 
 
 def make_llm(settings: Settings) -> LLM:
-    if settings.llm_mode == "openai-compatible":
-        return OpenAICompatibleLLM(settings.llm_api_key, settings.llm_base_url, settings.llm_model)
     if settings.llm_mode == "huggingface-local":
         return HuggingFaceTransformersLLM(
             settings.hf_model,

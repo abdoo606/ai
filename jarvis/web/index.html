@@ -50,7 +50,7 @@
   <aside>
     <h2>Learn a topic</h2>
     <textarea id="topic" placeholder="e.g. quantum computing"></textarea>
-    <div class="row"><button id="learn">Learn from the web</button></div>
+    <div class="row"><button id="learn">Deep-learn and archive</button></div>
     <h2 style="margin-top:18px">Recall</h2>
     <textarea id="q" placeholder="What do you know about…"></textarea>
     <div class="row"><button id="recall">Search memory</button></div>
@@ -116,7 +116,7 @@ document.getElementById('form').addEventListener('submit', e => {
 document.getElementById('learn').onclick = async () => {
   const topic = document.getElementById('topic').value.trim();
   if (!topic) return;
-  panel.textContent = 'Reading the web about "' + topic + '"…';
+  panel.textContent = 'Mapping the field, reading sources, and building local memory about "' + topic + '"… This can take several minutes.';
   try { panel.textContent = (await api('/api/learn', {topic})).result; }
   catch (e) { panel.textContent = 'Error: ' + e.message; }
 };
@@ -158,8 +158,8 @@ speakBtn.onclick = () => { speakReplies = !speakReplies; speakBtn.classList.togg
   try {
     const s = await api('/api/status');
     statusEl.textContent = s.llm === 'huggingface-local'
-      ? 'local model: ' + s.model
-      : (s.llm === 'openai-compatible' ? 'model: ' + s.model : 'offline mode (standalone)');
+      ? 'local brain: ' + s.model
+      : 'offline brain (standalone)';
     add('bot', 'Good day. How can I help? Try "learn quantum computing", then "recall how qubits work".');
   } catch (e) {
     statusEl.textContent = 'server not reachable';
