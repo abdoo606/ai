@@ -16,3 +16,6 @@ __pycache__/
 /results/*
 !/results/example/
 !/results/example/**
+
+# Jarvis local knowledge base and workspace data
+jarvis/data/
