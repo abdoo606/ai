@@ -13,7 +13,8 @@
 ## Technical evidence — repository supplied
 
 - [x] Current source-only tree separated from unrelated research project
-- [x] Automated unit/API/security/orchestration test suite
+- [x] Automated unit/API/security/orchestration test suite (76 passing)
+- [x] Measured package statement coverage: 82%; CI floor: 80%
 - [x] Python 3.10–3.12 CI and package build
 - [x] Static lint/security and dependency vulnerability scans
 - [x] Wheel/sdist packaging and clean-environment smoke test

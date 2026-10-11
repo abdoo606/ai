@@ -18,12 +18,15 @@ current tree before preparing the asset for a potential whole-project sale.
 
 ## Transaction room
 
-- [Asset sale overview](sales/ASSET_SALE_OVERVIEW.md)
-- [Asset inventory](sales/ASSET_INVENTORY.md)
-- [Buyer due-diligence index](sales/DUE_DILIGENCE_INDEX.md)
-- [Handover checklist](sales/HANDOVER_CHECKLIST.md)
+- [Sale-room index and recommended reading order](sales/README.md)
+- [Plain-Arabic seller decision brief](sales/SELLER_DECISION_BRIEF_AR.md)
+- [Historical MIT impact memo](sales/MIT_LICENSE_IMPACT_MEMO.md)
+- [Valuation and USD 2,500 fast-close offer](sales/VALUATION_AND_FAST_OFFER.md)
+- [Buyer teaser, FAQ, and quality report](sales/BUYER_TEASER.md)
+- [Researched prospect pipeline and outreach templates](sales/PROSPECT_PIPELINE.md)
+- [Asset inventory and due-diligence index](sales/ASSET_INVENTORY.md)
+- [Counsel intake, assignment draft, and handover checklist](sales/COUNSEL_INTAKE_CHECKLIST.md)
 - [Preliminary brand screening](sales/BRAND_CLEARANCE.md)
-- [Draft IP assignment term sheet](sales/IP_ASSIGNMENT_TERM_SHEET_DRAFT.md)
 
 The legal documents are structured diligence drafts, not legal advice or a
 substitute for buyer/seller counsel. No payment should be accepted until title,

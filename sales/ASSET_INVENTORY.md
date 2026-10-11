@@ -30,7 +30,7 @@ only whatever license rights are validly available may accompany the product.
 ## Version at transaction-room preparation
 
 - Product version: 0.7.0
-- Test baseline: 75 passing tests
+- Test baseline: 76 passing tests; 82% measured package statement coverage
 - Supported CI interpreters: Python 3.10, 3.11, 3.12
 - Package: `local-zehnora-assistant`
 - Console commands: `zehnora-local`, `zehnora-local-web`

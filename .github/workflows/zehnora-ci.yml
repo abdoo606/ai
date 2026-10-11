@@ -26,7 +26,8 @@ jobs:
       - run: python -m py_compile zehnora/*.py zehnora/scripts/*.py
       - run: ruff check zehnora
       - run: bandit -q -r zehnora -x zehnora/tests
-      - run: python -m pytest -q
+      - run: coverage run --source=zehnora -m pytest -q
+      - run: coverage report --omit='zehnora/tests/*' --fail-under=80
       - run: pip-audit
 
   package:
